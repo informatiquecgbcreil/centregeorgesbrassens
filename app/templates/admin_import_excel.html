@@ -1,0 +1,74 @@
+{% extends "layout.html" %}
+{% block body %}
+<div class="page-shell long-form-shell content-shell">
+  <section class="hero-card">
+    <div class="page-header">
+      <div class="page-title-wrap">
+        <h1>Import Excel · présences</h1>
+        <p class="muted">Charge un fichier .xlsx pour créer ateliers, sessions et présences. Le format ne contient pas les horaires : les sessions importées restent en mode date seule.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="section-card">
+    <form method="post" enctype="multipart/form-data" class="filters-panel">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="form-grid-3">
+        <label class="field-stack">
+          <span>Secteur</span>
+          <input class="in" type="text" name="secteur" value="{{ secteur or 'NUMERIQUE' }}">
+        </label>
+        <label class="field-stack">
+          <span>Fichier Excel (.xlsx)</span>
+          <input class="in" type="file" name="xlsx_file" accept=".xlsx" required>
+        </label>
+        <label class="field-stack">
+          <span>Mode</span>
+          <select class="in" name="dry_run">
+            <option value="1" {% if dry_run %}selected{% endif %}>Dry-run (test, rien n'est enregistré)</option>
+            <option value="0" {% if not dry_run %}selected{% endif %}>Import réel (écrit en base)</option>
+          </select>
+        </label>
+      </div>
+      <div class="hero-actions"><button class="btn ok" type="submit">Importer 🚀</button></div>
+    </form>
+  </section>
+
+  {% if stats %}
+  <section class="section-card">
+    <div class="page-header"><div class="page-title-wrap"><h2>Résultat</h2><p class="muted">Résumé global puis détail par onglet.</p></div></div>
+    <div class="choice-pills">
+      <span class="chip">Onglets traités <strong>{{ stats.sheets_processed }}</strong></span>
+      <span class="chip">Participants créés <strong>{{ stats.participants_created }}</strong></span>
+      <span class="chip">Sessions créées <strong>{{ stats.sessions_created }}</strong></span>
+      <span class="chip">Présences créées <strong>{{ stats.presences_created }}</strong></span>
+      <span class="chip">Doublons ignorés <strong>{{ stats.presences_skipped_duplicates }}</strong></span>
+    </div>
+
+    {% if stats.warnings and stats.warnings|length %}
+      <div class="callout-soft warnish">
+        <strong>Warnings</strong>
+        <ul>{% for w in stats.warnings %}<li>{{ w }}</li>{% endfor %}</ul>
+      </div>
+    {% endif %}
+
+    <details class="details-card" open>
+      <summary>Détails par onglet</summary>
+      <div class="stack">
+        {% for k, s in stats.sheets.items() %}
+          <article class="soft-panel">
+            <h3>{{ k }}</h3>
+            <div class="choice-pills">
+              <span class="chip">Lignes participants <strong>{{ s.participants }}</strong></span>
+              <span class="chip">Sessions créées <strong>{{ s.sessions }}</strong></span>
+              <span class="chip">Présences créées <strong>{{ s.presences }}</strong></span>
+            </div>
+            {% if s.warnings and s.warnings|length %}<div class="muted"><b>Warnings :</b><ul>{% for w in s.warnings %}<li>{{ w }}</li>{% endfor %}</ul></div>{% endif %}
+          </article>
+        {% endfor %}
+      </div>
+    </details>
+  </section>
+  {% endif %}
+</div>
+{% endblock %}

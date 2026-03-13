@@ -1,0 +1,173 @@
+{% extends "layout.html" %}
+{% import "_ux_helpers.html" as ux %}
+{% block body %}
+
+{% set annee_val = selected_annee if selected_annee is not none else '' %}
+{% set secteur_val = selected_secteur if selected_secteur else '' %}
+{% set projet_val = selected_projet_id if selected_projet_id else '' %}
+{% set stats_open_url = url_for('main.stats', annee=annee_val, secteur=secteur_val, projet_id=projet_val) %}
+{% set bilan_open_url = url_for('main.bilan_global', annee=annee_val, secteur=secteur_val, projet_id=projet_val) %}
+
+<div class="stack finance-shell finance-shell--single stats-hub-page stats-hub-page--synthese">
+  <section class="section-card stats-hub-hero">
+    <div class="page-header">
+      <div class="page-title-wrap">
+        <h1 class="page-title">Synthèse statistiques et bilans</h1>
+        <p class="page-subtitle">Cette page rassemble les principaux indicateurs du contexte choisi et vous redirige vers les vues détaillées lorsque nécessaire.</p>
+      </div>
+      <div class="stats-hub-actions">
+        <a class="btn ok" href="{{ stats_open_url }}">Ouvrir les statistiques</a>
+        <a class="btn" href="{{ bilan_open_url }}">Ouvrir le bilan</a>
+      </div>
+    </div>
+
+    <form method="get" action="{{ url_for('main.stats_bilans') }}" class="finance-form-grid stats-hub-filters">
+      <label class="field-stack slim">
+        <span>Année</span>
+        <select class="in" name="annee">
+          <option value="">-- toutes --</option>
+          {% for a in annees %}
+            <option value="{{ a }}" {% if selected_annee == a %}selected{% endif %}>{{ a }}</option>
+          {% endfor %}
+        </select>
+      </label>
+
+      <label class="field-stack slim">
+        <span>Secteur</span>
+        <select class="in" name="secteur" {% if not can('scope:all_secteurs') %}disabled{% endif %}>
+          <option value="">-- tous --</option>
+          {% for s in secteurs %}
+            <option value="{{ s }}" {% if selected_secteur == s %}selected{% endif %}>{{ s }}</option>
+          {% endfor %}
+        </select>
+        {% if not can('scope:all_secteurs') %}
+          <input type="hidden" name="secteur" value="{{ current_user.secteur_assigne }}">
+        {% endif %}
+      </label>
+
+      <label class="field-stack slim stats-hub-project">
+        <span>Projet</span>
+        <select class="in" name="projet_id">
+          <option value="">-- tous --</option>
+          {% for p in projets %}
+            <option value="{{ p.id }}" {% if selected_projet_id == p.id %}selected{% endif %}>{{ p.nom }}</option>
+          {% endfor %}
+        </select>
+      </label>
+
+      <div class="finance-actions stats-hub-submit">
+        <button class="btn ok" type="submit">Appliquer</button>
+        <a class="btn" href="{{ url_for('main.stats_bilans') }}">Réinitialiser</a>
+      </div>
+    </form>
+
+    <div class="stats-hub-context">
+      <span class="status-badge">Année : {{ summary.filters_label.annee }}</span>
+      <span class="status-badge">Secteur : {{ summary.filters_label.secteur }}</span>
+      <span class="status-badge">Projet : {{ summary.filters_label.projet }}</span>
+    </div>
+  </section>
+
+  {{ ux.callout("À savoir", "Cette page centralise une lecture rapide. Utilisez ensuite les liens vers les statistiques détaillées ou le bilan détaillé pour approfondir l’analyse ou préparer un export.") }}
+
+  <section class="stats-hub-kpis">
+    <article class="section-card stats-hub-kpi"><span class="eyebrow">Subventions</span><strong>{{ kpis.subventions }}</strong><small>dans le contexte courant</small></article>
+    <article class="section-card stats-hub-kpi"><span class="eyebrow">Projets</span><strong>{{ kpis.projets }}</strong><small>visibles / filtrés</small></article>
+    <article class="section-card stats-hub-kpi"><span class="eyebrow">Reçu</span><strong>{{ '%.2f'|format(kpis.recu) }}€</strong><small>montants perçus</small></article>
+    <article class="section-card stats-hub-kpi"><span class="eyebrow">Engagé</span><strong>{{ '%.2f'|format(kpis.engage) }}€</strong><small>dépenses imputées</small></article>
+    <article class="section-card stats-hub-kpi"><span class="eyebrow">Reste</span><strong>{{ '%.2f'|format(kpis.reste) }}€</strong><small>encore mobilisable</small></article>
+    <article class="section-card stats-hub-kpi"><span class="eyebrow">Taux conso</span><strong>{{ '%.1f'|format(kpis.taux_conso) }}%</strong><small>engagé / reçu</small></article>
+  </section>
+
+  <section class="stats-hub-grid stats-hub-grid--synthese">
+    <article class="section-card stats-hub-card stats-hub-card--full">
+      <div class="page-header page-header--compact">
+        <div>
+          <div class="eyebrow">Synthèse issue de Stats</div>
+          <h2>Par secteur</h2>
+          <p class="muted">Lecture rapide des masses financières avant l’analyse détaillée.</p>
+        </div>
+        <div class="finance-actions"><a class="btn ok" href="{{ stats_open_url }}">Voir le détail des statistiques</a></div>
+      </div>
+      {% if by_secteur %}
+      <div class="tablewrap clean finance-table">
+        <table>
+          <thead>
+            <tr><th>Secteur</th><th>Reçu</th><th>Engagé</th><th>Reste</th><th>Lecture</th></tr>
+          </thead>
+          <tbody>
+            {% for row in by_secteur %}
+            {% set pct = (row.engage / row.recu * 100) if row.recu else 0 %}
+            <tr>
+              <td><strong>{{ row.secteur }}</strong></td>
+              <td>{{ '%.2f'|format(row.recu) }}€</td>
+              <td>{{ '%.2f'|format(row.engage) }}€</td>
+              <td>{{ '%.2f'|format(row.reste) }}€</td>
+              <td class="stats-hub-read-cell">
+                <div class="mini-progress" aria-label="{{ '%.1f'|format(pct) }}% engagé">
+                  <span class="mini-progress__bar" style="width: {{ '%.1f'|format(pct) }}%;"></span>
+                </div>
+                <small>{{ '%.1f'|format(pct) }}% engagé</small>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div class="quick-empty">Aucune donnée secteur à afficher avec ce contexte.</div>
+      {% endif %}
+    </article>
+
+    <article class="section-card stats-hub-card">
+      <div class="page-header page-header--compact">
+        <div>
+          <div class="eyebrow">Synthèse issue de Bilan</div>
+          <h2>Top subventions</h2>
+          <p class="muted">Les plus gros montants reçus dans le contexte courant.</p>
+        </div>
+        <div class="finance-actions"><a class="btn" href="{{ bilan_open_url }}">Voir le détail du bilan</a></div>
+      </div>
+      {% if top_subventions %}
+      <div class="tablewrap clean finance-table">
+        <table>
+          <thead>
+            <tr><th>Subvention</th><th>Reçu</th><th>Engagé</th><th>Reste</th></tr>
+          </thead>
+          <tbody>
+            {% for s in top_subventions %}
+            <tr>
+              <td>
+                <strong>{{ s.nom }}</strong>
+                <div class="muted small">{{ s.annee }} · {{ s.secteur }}</div>
+              </td>
+              <td>{{ '%.2f'|format(s.recu) }}€</td>
+              <td>{{ '%.2f'|format(s.engage) }}€</td>
+              <td>{{ '%.2f'|format(s.reste) }}€</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div class="quick-empty">Aucune subvention à remonter ici.</div>
+      {% endif %}
+    </article>
+
+    <article class="section-card stats-hub-card">
+      <div class="eyebrow">Points de vigilance</div>
+      <h2>Alertes utiles</h2>
+      <p class="muted">Alertes reprises à partir des données de bilan pour signaler les principaux points de vigilance.</p>
+      {% if alertes %}
+      <div class="stack gap-8">
+        {% for al in alertes %}
+          <div class="alert alert-{{ 'danger' if al.niveau == 'danger' else 'warning' }}">{{ al.texte }}</div>
+        {% endfor %}
+      </div>
+      {% else %}
+        <div class="quick-empty">Aucune alerte bloquante n'a été détectée pour ce contexte.</div>
+      {% endif %}
+    </article>
+  </section>
+</div>
+{% endblock %}

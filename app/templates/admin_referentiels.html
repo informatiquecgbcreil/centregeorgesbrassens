@@ -1,0 +1,40 @@
+{% extends "layout.html" %}
+
+{% block body %}
+<div class="card" style="padding:16px;">
+  <h1 style="margin:0 0 10px 0;">Référentiels</h1>
+
+  <div style="margin-bottom:12px;">
+    <a class="btn btn-primary" href="{{ url_for('admin.import_skills') }}">Importer un CSV</a>
+  </div>
+
+  {% if frameworks and frameworks|length %}
+    <table class="table table-sm">
+      <thead>
+        <tr>
+          <th>Code</th>
+          <th>Nom</th>
+          <th>Version</th>
+          <th>Langue</th>
+          <th>Compétences</th>
+          <th>Actif</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for fw in frameworks %}
+          <tr>
+            <td>{{ fw.code }}</td>
+            <td>{{ fw.nom }}</td>
+            <td>{{ fw.version or '' }}</td>
+            <td>{{ fw.lang or '' }}</td>
+            <td>{{ fw.nb_skills or 0 }}</td>
+            <td>{{ 'Oui' if fw.actif else 'Non' }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p><em>Aucun référentiel importé.</em></p>
+  {% endif %}
+</div>
+{% endblock %}

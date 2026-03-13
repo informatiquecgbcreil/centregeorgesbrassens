@@ -1,0 +1,13 @@
+venv/
+.venv/
+__pycache__/
+instance/
+.env
+*.db
+*.sqlite3
+
+# Données utilisateurs (ne pas versionner)
+static/uploads/
+app/static/uploads/
+
+backups/

@@ -1,0 +1,184 @@
+{% extends 'kiosk/base.html' %}
+{% block body %}
+  <div class="page-shell kiosk-shell content-shell">
+    <section class="hero-card">
+      <div class="page-header">
+        <div class="page-title-wrap">
+          <h1>{{ session_label }}</h1>
+          <p class="muted">Code session : <strong>{{ session.kiosk_pin or '—' }}</strong></p>
+        </div>
+        <div class="hero-actions">
+          <a class="btn" href="{{ url_for('kiosk.kiosk_home') }}">Changer de session</a>
+          <a class="btn" href="{{ url_for('kiosk.kiosk_feedback', token=token) }}">Ressenti participant</a>
+          {% if current_user.is_authenticated and can('questionnaires:respond') %}<a class="btn" href="{{ url_for('questionnaires.respond', session_id=session.id) }}">Questionnaire</a>{% endif %}
+        </div>
+      </div>
+      <div class="context-strip"><span class="context-pill">Lien public : <a href="{{ feedback_url }}">{{ feedback_url }}</a></span></div>
+    </section>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}<section class="section-card">{% for cat,msg in messages %}<div class="alert {{ cat }}" style="margin:6px 0;">{{ msg }}</div>{% endfor %}</section>{% endif %}
+    {% endwith %}
+    {% if message_ok %}<section class="section-card"><div class="alert success" style="margin:0; font-size:18px;"><strong>{{ message_ok }}</strong></div><div class="muted" style="margin-top:8px;">Tu peux fermer cette page, ou émarger quelqu'un d'autre.</div></section>{% endif %}
+
+    <section class="section-card">
+      <div class="page-header"><div class="page-title-wrap"><h2>Émarger</h2><p class="muted">Recherche, choix du participant, motif et signature.</p></div></div>
+      <form method="post" id="emargeForm" autocomplete="off" class="stack">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="emarger"><input type="hidden" name="signature_data" id="signature_data"><input type="hidden" name="participant_id" id="participant_id">
+        <div class="form-grid-2">
+          <label class="field-stack"><span>Nom (recherche)</span><input class="in" id="search" placeholder="Tape les 2-3 premières lettres" autocomplete="off"><div id="results" class="soft-panel" style="display:none;"></div><div class="muted">Clique sur ton nom dans la liste.</div></label>
+          <div class="field-stack"><span>Participant choisi</span><div id="chosen" class="in static-field">—</div><div class="muted">Nouveau ? <a href="#" id="toggleNew">Créer un participant</a></div></div>
+        </div>
+        <div class="form-grid-2">
+          <label class="field-stack"><span>Motif</span><select class="in" name="motif" id="motif"><option value="">—</option>{% for m in motifs %}<option value="{{ m }}">{{ m }}</option>{% endfor %}<option value="Autre">Autre</option></select></label>
+          <label class="field-stack"><span>Si autre, préciser</span><input class="in" type="text" name="motif_autre" id="motif_autre" placeholder="..."></label>
+        </div>
+        <div class="sig-panel">
+          <label>Signature</label>
+          <canvas id="sig" width="700" height="180" class="sig-canvas"></canvas>
+          <div class="hero-actions"><button class="btn" type="button" id="clearSig">Effacer</button><button class="btn" type="submit">Valider l’émargement</button></div>
+        </div>
+      </form>
+    </section>
+
+    <div id="newParticipant" style="display:none;">
+      <section class="section-card">
+        <div class="page-header"><div class="page-title-wrap"><h2>Nouveau participant</h2><p class="muted">Crée la personne, puis re-clique sur son nom dans la recherche pour signer.</p></div></div>
+        <form method="post" id="newParticipantForm" autocomplete="off" class="stack">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="add_participant">
+          <div class="form-grid-2">
+            <label class="field-stack"><span>Nom</span><input class="in" name="nom" required></label>
+            <label class="field-stack"><span>Prénom</span><input class="in" name="prenom" required></label>
+            <label class="field-stack"><span>Ville</span><input class="in" name="ville" placeholder="Creil" data-ville-input></label>
+            <label class="field-stack"><span>Quartier</span><select class="in" name="quartier_id" data-quartier-select><option value="">—</option>{% for q in quartiers %}<option value="{{ q.id }}" data-ville="{{ q.ville }}">{{ q.ville }} — {{ q.nom }}{% if q.is_qpv %} (QPV){% endif %}</option>{% endfor %}</select></label>
+          </div>
+          <div class="form-grid-2">
+            <label class="field-stack"><span>Type de public</span><select class="in" name="type_public"><option value="H" selected>H</option><option value="S">S</option><option value="B">B</option><option value="A">A</option><option value="P">P</option></select></label>
+            <div class="field-stack"><span>&nbsp;</span><div class="muted">Optionnel — si tu ne sais pas : laisse H.</div></div>
+            <label class="field-stack"><span>Email (optionnel)</span><input class="in" name="email"></label>
+            <label class="field-stack"><span>Téléphone (optionnel)</span><input class="in" name="telephone"></label>
+            <label class="field-stack"><span>Date de naissance</span><input class="in" type="date" name="date_naissance" placeholder="YYYY-MM-DD"></label>
+            <label class="field-stack"><span>Genre</span><select class="in" name="genre"><option value="">—</option><option value="Femme">Femme</option><option value="Homme">Homme</option><option value="Autre">Autre</option><option value="Préférez ne pas répondre">Préférez ne pas répondre</option></select></label>
+          </div>
+          <div class="hero-actions"><button class="btn" type="submit">Créer le participant</button><button class="btn" type="button" id="cancelNew">Annuler</button></div>
+        </form>
+      </section>
+    </div>
+  </div>
+<script>
+
+(() => {
+  const token = "{{ token }}";
+  const search = document.getElementById('search');
+  const results = document.getElementById('results');
+  const chosen = document.getElementById('chosen');
+  const pid = document.getElementById('participant_id');
+  const toggleNew = document.getElementById('toggleNew');
+  const newBlock = document.getElementById('newParticipant');
+  const cancelNew = document.getElementById('cancelNew');
+
+  const highlightId = {{ (highlight or 'null')|tojson }};
+  const highlightLabel = {{ (highlight_label or 'null')|tojson }};
+  if(highlightId && highlightLabel){
+    pid.value = highlightId;
+    chosen.textContent = highlightLabel;
+  }
+
+  function showResults(list){
+    results.innerHTML = '';
+    if(!list.length){ results.style.display='none'; return; }
+    results.style.display = 'block';
+    list.forEach(item => {
+      const b = document.createElement('button');
+      b.type='button';
+      b.className='btn';
+      b.style.margin='6px 6px 0 0';
+      b.textContent=item.label;
+      b.addEventListener('click', () => {
+        pid.value = item.id;
+        chosen.textContent = item.label;
+        results.style.display='none';
+        newBlock.style.display='none';
+      });
+      results.appendChild(b);
+    });
+  }
+
+  let t = null;
+  search.addEventListener('input', () => {
+    const q = search.value.trim();
+    if(t) clearTimeout(t);
+    if(q.length < 2){ showResults([]); return; }
+    t = setTimeout(async () => {
+      const r = await fetch(`{{ url_for('kiosk.kiosk_search', token='__TOKEN__') }}`.replace('__TOKEN__', token) + `?q=${encodeURIComponent(q)}`);
+      if(!r.ok){ showResults([]); return; }
+      const data = await r.json();
+      showResults(data.results || []);
+    }, 250);
+  });
+
+  toggleNew.addEventListener('click', (e) => {
+    e.preventDefault();
+    newBlock.style.display = (newBlock.style.display==='none') ? 'block' : 'none';
+  });
+  cancelNew.addEventListener('click', () => {
+    newBlock.style.display='none';
+  });
+
+  // Signature canvas
+  const canvas = document.getElementById('sig');
+  const ctx = canvas.getContext('2d');
+  let drawing = false;
+  let last = null;
+
+  function paintSignatureSurface(){
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.restore();
+  }
+
+  paintSignatureSurface();
+
+  function pos(e){
+    const r = canvas.getBoundingClientRect();
+    const x = (e.touches ? e.touches[0].clientX : e.clientX) - r.left;
+    const y = (e.touches ? e.touches[0].clientY : e.clientY) - r.top;
+    return {x: x * (canvas.width/r.width), y: y * (canvas.height/r.height)};
+  }
+  function start(e){ drawing = true; last = pos(e); e.preventDefault(); }
+  function move(e){
+    if(!drawing) return;
+    const p = pos(e);
+    ctx.lineWidth = 2.5;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.strokeStyle = '#111827';
+    ctx.beginPath();
+    ctx.moveTo(last.x, last.y);
+    ctx.lineTo(p.x, p.y);
+    ctx.stroke();
+    last = p;
+    e.preventDefault();
+  }
+  function end(e){ drawing = false; last = null; e.preventDefault(); }
+
+  canvas.addEventListener('mousedown', start);
+  canvas.addEventListener('mousemove', move);
+  window.addEventListener('mouseup', end);
+  canvas.addEventListener('touchstart', start, {passive:false});
+  canvas.addEventListener('touchmove', move, {passive:false});
+  canvas.addEventListener('touchend', end, {passive:false});
+
+  document.getElementById('clearSig').addEventListener('click', () => {
+    paintSignatureSurface();
+  });
+
+  document.getElementById('emargeForm').addEventListener('submit', () => {
+    document.getElementById('signature_data').value = canvas.toDataURL('image/png');
+  });
+})();
+</script>
+{% endblock %}

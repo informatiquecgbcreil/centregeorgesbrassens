@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container py-3">
+  <div class="d-flex align-items-center justify-content-between mb-3">
+    <div>
+      <h2 class="mb-1">Modules de la session</h2>
+      <div class="text-muted">
+        Session #{{ session.id }} — {{ atelier.nom if atelier else "(atelier inconnu)" }}
+      </div>
+    </div>
+    <div>
+      <a class="btn btn-outline-secondary" href="{{ url_for('activite.emargement', session_id=session.id) }}">Retour</a>
+    </div>
+  </div>
+
+  {% if modules_scope == "plan" %}
+    <div class="alert alert-info">
+      Modules proposés : issus du plan projet/atelier (plus strict). Si tu veux "tout", complète ton plan projet, ou fais-moi ajouter un switch.
+    </div>
+  {% else %}
+    <div class="alert alert-warning">
+      Aucun plan projet/atelier détecté : je te propose tous les modules actifs.
+    </div>
+  {% endif %}
+
+  <form method="post" class="card">
+    <div class="card-body">
+      <p class="text-muted mb-2">Coche les modules à rattacher à cette session (ça servira ensuite à évaluer facilement, et à filtrer proprement).</p>
+
+      <div class="row">
+        {% for m in modules %}
+          <div class="col-12 col-md-6 col-lg-4">
+            <div class="form-check mb-2">
+              <input class="form-check-input" type="checkbox" name="module_ids" value="{{ m.id }}" id="mod_{{ m.id }}"
+                     {% if m.id in selected_ids %}checked{% endif %}>
+              <label class="form-check-label" for="mod_{{ m.id }}">
+                <strong>{{ m.nom }}</strong>
+                {% if m.description %}<div class="small text-muted">{{ m.description }}</div>{% endif %}
+              </label>
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+    <div class="card-footer d-flex justify-content-end">
+      <button class="btn btn-primary" type="submit">Enregistrer</button>
+    </div>
+  </form>
+</div>
+{% endblock %}

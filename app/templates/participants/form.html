@@ -1,0 +1,45 @@
+{% extends "layout.html" %}
+{% block body %}
+<div class="page-shell long-form-shell stack">
+  <div class="page-header">
+    <div class="page-title-wrap">
+      <h1 class="page-title">{{ 'Nouveau participant' if not item else 'Participant' }}</h1>
+      <p class="page-subtitle">Fiche contact, localisation et informations utiles pour l’activité.</p>
+    </div>
+    <div class="hero-actions"><a class="btn" href="{{ url_for('participants.list_participants') }}">⬅ Retour</a></div>
+  </div>
+
+  {% if item and not is_editable %}
+    <div class="soft-panel">🔒 Lecture seule : ce participant a été créé pour <strong>{{ item.created_secteur or '—' }}</strong>. Tu peux l’utiliser pour l’émargement, mais tu ne peux pas modifier sa fiche.</div>
+  {% endif %}
+
+  <div class="form-card reading-width">
+    <form method="post" class="stack" data-pending-form="participant">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="form-grid-2 stretch-input">
+        <div class="field-stack"><label class="muted">Nom</label><input class="in" type="text" name="nom" value="{{ item.nom if item else '' }}" {% if item and not is_editable %}disabled{% endif %}></div>
+        <div class="field-stack"><label class="muted">Prénom</label><input class="in" type="text" name="prenom" value="{{ item.prenom if item else '' }}" {% if item and not is_editable %}disabled{% endif %}></div>
+        <div class="field-stack"><label class="muted">Email</label><input class="in" type="email" name="email" value="{{ item.email if item and item.email else '' }}" {% if item and not is_editable %}disabled{% endif %}></div>
+        <div class="field-stack"><label class="muted">Téléphone</label><input class="in" type="text" name="telephone" value="{{ item.telephone if item and item.telephone else '' }}" {% if item and not is_editable %}disabled{% endif %}></div>
+        <div class="field-stack grow-2"><label class="muted">Adresse</label><input class="in" type="text" name="adresse" value="{{ item.adresse if item and item.adresse else '' }}" {% if item and not is_editable %}disabled{% endif %}></div>
+        <div class="field-stack"><label class="muted">Ville</label><input class="in" type="text" name="ville" value="{{ item.ville if item and item.ville else '' }}" data-ville-input {% if item and not is_editable %}disabled{% endif %}></div>
+        <div class="field-stack"><label class="muted">Quartier</label><select class="in" name="quartier_id" data-quartier-select {% if item and not is_editable %}disabled{% endif %}><option value="">—</option>{% for q in quartiers %}<option value="{{ q.id }}" data-ville="{{ q.ville }}" {% if item and item.quartier_id == q.id %}selected{% endif %}>{{ q.ville }} — {{ q.nom }}{% if q.is_qpv %} (QPV){% endif %}</option>{% endfor %}</select></div>
+        <div class="field-stack"><label class="muted">Date de naissance</label><input class="in" type="date" name="date_naissance" value="{% if item and item.date_naissance %}{{ item.date_naissance }}{% endif %}" {% if item and not is_editable %}disabled{% endif %}></div>
+        <div class="field-stack"><label class="muted">Genre</label>{% set g = (item.genre if item and item.genre else '') %}<select class="in" name="genre" {% if item and not is_editable %}disabled{% endif %}><option value="" {% if not g %}selected{% endif %}>—</option><option value="Homme" {% if g == 'Homme' %}selected{% endif %}>Homme</option><option value="Femme" {% if g == 'Femme' %}selected{% endif %}>Femme</option><option value="Autre" {% if g == 'Autre' %}selected{% endif %}>Autre</option></select></div>
+        <div class="field-stack"><label class="muted">Type public</label>{% set tp = (item.type_public if item and item.type_public else 'H') %}<select class="in" name="type_public" {% if item and not is_editable %}disabled{% endif %}><option value="H" {% if tp == 'H' %}selected{% endif %}>Habitant</option><option value="P" {% if tp == 'P' %}selected{% endif %}>Partenaire</option><option value="B" {% if tp == 'J' %}selected{% endif %}>Bénévole</option><option value="S" {% if tp == 'S' %}selected{% endif %}>Salarié</option><option value="A" {% if tp == 'A' %}selected{% endif %}>Autre</option></select></div>
+        {% if can('participants:view_all') %}<div class="field-stack"><label class="muted">Créé pour (secteur)</label><input class="in" type="text" name="created_secteur" value="{{ item.created_secteur if item and item.created_secteur else '' }}"></div>{% endif %}
+      </div>
+      <div class="form-actions">
+        {% if not item %}<button class="btn ok" type="submit">Créer</button>{% else %}{% if is_editable %}<button class="btn ok" type="submit">Enregistrer</button>{% endif %}{% endif %}
+        <a class="btn" href="{{ url_for('participants.list_participants') }}">Annuler</a>
+      </div>
+    </form>
+  </div>
+</div>
+<script>
+const villeInput = document.querySelector('[data-ville-input]');
+const quartierSelect = document.querySelector('[data-quartier-select]');
+function syncQuartiers(){ if(!villeInput || !quartierSelect) return; const ville=(villeInput.value||'').trim().toLowerCase(); Array.from(quartierSelect.options).forEach(opt=>{ if(!opt.dataset.ville){ opt.hidden=false; return;} opt.hidden = ville && opt.dataset.ville.toLowerCase() !== ville; });}
+if(villeInput){ villeInput.addEventListener('input', syncQuartiers); syncQuartiers(); }
+</script>
+{% endblock %}

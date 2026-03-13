@@ -1,0 +1,107 @@
+{% extends 'layout.html' %}
+{% import "_ux_helpers.html" as ux %}
+
+{% block body %}
+  {% set ns = namespace(total=ateliers|length, actifs=0, inactifs=0, collectifs=0, individuels=0) %}
+  {% for a in ateliers %}
+    {% if a.is_active %}{% set ns.actifs = ns.actifs + 1 %}{% else %}{% set ns.inactifs = ns.inactifs + 1 %}{% endif %}
+    {% if a.type_atelier == 'COLLECTIF' %}{% set ns.collectifs = ns.collectifs + 1 %}{% else %}{% set ns.individuels = ns.individuels + 1 %}{% endif %}
+  {% endfor %}
+  <div class="stack">
+    <div class="page-hero-soft">
+      <div class="section-head">
+        <div>
+          <h1 style="margin:0;">Activités et émargement · {{ secteur }}</h1>
+          <div class="muted">Consultez les activités du secteur, préparez les sessions et accédez rapidement aux feuilles d’émargement.</div>
+        </div>
+        <div class="section-actions">
+          {% if corbeille %}
+            <a class="btn" href="{{ url_for('activite.index') }}">Voir les activités actives</a>
+          {% else %}
+            {% if show_inactive %}
+              <a class="btn" href="{{ url_for('activite.index') }}">Masquer les activités inactives</a>
+            {% else %}
+              <a class="btn" href="{{ url_for('activite.index', inactifs=1) }}">Afficher les activités inactives</a>
+            {% endif %}
+            <a class="btn" href="{{ url_for('activite.index', corbeille=1) }}">Corbeille</a>
+          {% endif %}
+          <a class="btn ok" href="{{ url_for('activite.atelier_new') }}">Créer une activité</a>
+          <a class="btn" href="{{ url_for('activite.participants') }}">Participants</a>
+        </div>
+      </div>
+      {{ ux.callout('À savoir', 'Les activités inactives restent consultables. Placez une activité dans la corbeille si vous souhaitez la retirer des listes courantes tout en gardant la possibilité de la restaurer.') }}
+      <div class="page-kpis">
+        <div class="metric-card"><div class="metric-label">Activités affichées</div><div class="metric-value">{{ ns.total }}</div><div class="metric-help">{{ 'Corbeille' if corbeille else 'Périmètre actuel' }}</div></div>
+        <div class="metric-card"><div class="metric-label">Actives</div><div class="metric-value">{{ ns.actifs }}</div><div class="metric-help">Disponibles pour la saisie</div></div>
+        <div class="metric-card"><div class="metric-label">Collectives</div><div class="metric-value">{{ ns.collectifs }}</div><div class="metric-help">Capacité en places</div></div>
+        <div class="metric-card"><div class="metric-label">Individuelles</div><div class="metric-value">{{ ns.individuels }}</div><div class="metric-help">Capacité en heures</div></div>
+      </div>
+    </div>
+
+    <div class="section-card compact">
+      <div class="section-head">
+        <div>
+          <h2 style="margin:0;">Liste des activités</h2>
+          <div class="muted">Repérez le type, la capacité et le statut avant d’ouvrir les sessions.</div>
+        </div>
+        <div class="context-strip">
+          {% if corbeille %}<span class="chip">Affichage : corbeille</span>{% endif %}
+          {% if show_inactive and not corbeille %}<span class="chip">Activités inactives visibles</span>{% endif %}
+        </div>
+      </div>
+      <div class="tablewrap clean">
+        <table>
+          <thead>
+            <tr>
+              <th>Nom</th>
+              <th>Type</th>
+              <th>Capacité</th>
+              <th>Durée</th>
+              <th>Statut</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for a in ateliers %}
+              <tr>
+                <td><strong>{{ a.nom }}</strong><br><span class="muted">{{ a.description or 'Aucune description renseignée.' }}</span></td>
+                <td><span class="status-badge {{ 'status-info' if a.type_atelier == 'COLLECTIF' else 'status-warning' }}">{{ 'Collectif' if a.type_atelier == 'COLLECTIF' else 'Individuel mensuel' }}</span></td>
+                <td>
+                  {% if a.type_atelier == 'COLLECTIF' %}
+                    {{ a.capacite_defaut or '—' }} place(s) par défaut
+                  {% else %}
+                    {{ a.heures_dispo_defaut_mois or 0 }} h / mois par défaut
+                  {% endif %}
+                </td>
+                <td>{{ a.duree_defaut_minutes or '—' }} min</td>
+                <td>
+                  <span class="status-badge {{ 'status-success' if a.is_active else 'status-warning' }}">{{ 'Active' if a.is_active else 'Inactive' }}</span>
+                  {% if a.continuity_parent %}<div class="muted" style="font-size:12px; margin-top:6px;">Suite de : {{ a.continuity_parent.nom }}</div>{% endif %}
+                </td>
+                <td>
+                  <div class="table-actions">
+                  {% if not corbeille %}
+                    <a class="btn" href="{{ url_for('activite.sessions', atelier_id=a.id) }}">Sessions</a>
+                    <a class="btn" href="{{ url_for('activite.atelier_edit', atelier_id=a.id) }}">Paramètres</a>
+                    <form method="post" action="{{ url_for('activite.atelier_delete', atelier_id=a.id) }}" style="display:inline;" onsubmit="return confirm('Placer cette activité dans la corbeille ? Elle pourra être restaurée ensuite.');">
+                      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                      <button type="submit" class="btn danger">Mettre en corbeille</button>
+                    </form>
+                  {% else %}
+                    <form method="post" action="{{ url_for('activite.atelier_restore', atelier_id=a.id) }}" style="display:inline;" onsubmit="return confirm('Restaurer cette activité ?');">
+                      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                      <button type="submit" class="btn ok">Restaurer</button>
+                    </form>
+                  {% endif %}
+                  </div>
+                </td>
+              </tr>
+            {% else %}
+              <tr><td colspan="6"><div class="quick-empty"><strong>{{ 'La corbeille est vide.' if corbeille else 'Aucune activité n’est disponible pour le moment.' }}</strong>{{ 'Aucune activité archivée n’est disponible à la restauration.' if corbeille else 'Créez une activité pour planifier des sessions et enregistrer les présences.' }}</div></td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+{% endblock %}

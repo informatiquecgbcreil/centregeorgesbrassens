@@ -1,0 +1,77 @@
+{#
+  Formulaire d'évaluation rapide.
+
+  Pré-requis côté view (participant_passeport):
+    - eval_etats (dict)
+    - modules (liste PedagogieModule)
+    - referentiels (liste Referentiel)
+    - session_choices (liste SessionActivite où le participant est présent)
+
+  Intégration :
+    {% include 'pedagogie/_passeport_eval_form.html' %}
+#}
+
+<div class="card mb-3">
+  <div class="card-header">
+    <strong>Évaluer (même hors session)</strong>
+    <div class="small text-muted">Tu peux enregistrer une évaluation sans session, ou la rattacher à une session existante.</div>
+  </div>
+  <form method="post" action="{{ url_for('pedagogie.participant_passeport_add_evaluation', participant_id=participant.id) }}">
+    <div class="card-body">
+
+      <input type="hidden" name="secteur" value="{{ selected_secteur or '' }}">
+
+      <div class="row g-2">
+        <div class="col-12 col-lg-4">
+          <label class="form-label">Session (optionnel)</label>
+          <select class="form-select" name="session_id">
+            <option value="">— Hors session —</option>
+            {% for s in session_choices %}
+              <option value="{{ s.id }}">
+                #{{ s.id }} — {{ s.nom or (s.atelier.nom if s.atelier else 'Session') }} — {{ (s.date_session or s.rdv_date or s.created_at.date()) }}
+              </option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="col-12 col-lg-4">
+          <label class="form-label">Date (optionnel)</label>
+          <input class="form-control" type="date" name="date_evaluation">
+          <div class="form-text">Si vide : aujourd'hui.</div>
+        </div>
+
+        <div class="col-12 col-lg-4">
+          <label class="form-label">Niveau</label>
+          <select class="form-select" name="etat" required>
+            {% for k, v in eval_etats.items() %}
+              <option value="{{ k }}">{{ v }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="col-12">
+          <label class="form-label">Compétence</label>
+          <select class="form-select" name="competence_id" required>
+            {% for ref in referentiels %}
+              <optgroup label="{{ ref.nom }}">
+                {% for c in ref.competences %}
+                  <option value="{{ c.id }}">{{ c.code }} — {{ c.nom }}</option>
+                {% endfor %}
+              </optgroup>
+            {% endfor %}
+          </select>
+          <div class="form-text">Astuce : on ajoutera bientôt un filtre par module (option A++).</div>
+        </div>
+
+        <div class="col-12">
+          <label class="form-label">Commentaire (optionnel)</label>
+          <textarea class="form-control" name="commentaire" rows="2" placeholder="Ex: autonome sur la recherche, encore fragile sur le tri..."></textarea>
+        </div>
+      </div>
+
+    </div>
+    <div class="card-footer d-flex justify-content-end">
+      <button class="btn btn-primary" type="submit">Enregistrer l'évaluation</button>
+    </div>
+  </form>
+</div>

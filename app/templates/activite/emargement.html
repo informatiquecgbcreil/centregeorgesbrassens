@@ -1,0 +1,692 @@
+{% extends 'layout.html' %}
+{% import "_ux_helpers.html" as ux %}
+
+{% block head_extra %}
+  <style>
+    .eval-modal .modal-dialog,
+    .bulk-eval-modal .modal-dialog {
+      max-width: min(1100px, calc(100vw - 24px));
+      margin: 1rem auto;
+    }
+    .eval-modal .modal-content,
+    .bulk-eval-modal .modal-content {
+      max-height: calc(100vh - 2rem);
+      border-radius: 16px;
+    }
+    .eval-modal .modal-body,
+    .bulk-eval-modal .modal-body {
+      overflow-y: auto;
+      max-height: calc(100vh - 190px);
+      padding-bottom: 1rem;
+    }
+    .eval-modal .modal-footer,
+    .bulk-eval-modal .modal-footer {
+      position: sticky;
+      bottom: 0;
+      background: var(--surface, #fff);
+      z-index: 1;
+      border-top: 1px solid rgba(0,0,0,.08);
+    }
+    .eval-modal .competence-card {
+      margin-bottom: 12px;
+    }
+  </style>
+{% endblock %}
+
+{% block body %}
+<div class="emargement-shell stack-lg">
+  <section class="page-hero">
+    <div class="hero-top">
+      <div>
+        <h1 style="margin:0;">Émargement · {{ atelier.nom }}</h1>
+        <div class="muted">
+          {% if session.session_type == 'COLLECTIF' %}
+            {{ session.date_session }} {{ session.heure_debut or '' }}{% if session.heure_fin %}-{{ session.heure_fin }}{% endif %}
+            · Capacité: {{ session.capacite or atelier.capacite_defaut or '—' }}
+          {% else %}
+            RDV : {{ session.rdv_date }} {{ session.rdv_debut or '' }}{% if session.rdv_fin %}-{{ session.rdv_fin }}{% endif %}
+          {% endif %}
+        </div>
+      </div>
+      <div class="hero-actions toolbar-line">
+        <a class="btn" href="{{ url_for('activite.sessions', atelier_id=atelier.id) }}">Retour aux sessions</a>
+        <a class="btn" href="{{ url_for('activite.session_edit_schedule', session_id=session.id) }}">Modifier la date et l'horaire</a>
+        <span class="status-badge {{ 'status-success' if session.kiosk_open else 'status-warning' }}">{{ 'Kiosque ouvert' if session.kiosk_open else 'Kiosque fermé' }}</span>
+        {% if session.session_type == 'COLLECTIF' %}
+          <a class="btn" href="{{ url_for('activite.generate_collectif', session_id=session.id) }}">Générer la feuille PDF</a>
+        {% endif %}
+        {# KIOSQUE PUBLIC #}
+        {% if session.kiosk_open %}
+          <a class="btn" href="{{ url_for('kiosk.kiosk_home') }}" target="_blank">Ouvrir le kiosque</a>
+          <a class="btn" href="{{ url_for('kiosk.kiosk_session', token=session.kiosk_token) }}" target="_blank">Ouvrir cette session</a>
+          <form method="post" action="{{ url_for('activite.kiosk_close', session_id=session.id) }}" style="margin:0;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="btn" type="submit">Fermer le kiosque</button>
+          </form>
+        {% else %}
+          <form method="post" action="{{ url_for('activite.kiosk_open', session_id=session.id) }}" style="margin:0;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="btn" type="submit">Ouvrir le kiosque</button>
+          </form>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <section class="section-card">
+    {{ ux.callout("Flux conseillé", "Commencez par enregistrer les présences, puis utilisez l'évaluation individuelle ou l'évaluation groupée selon le niveau de détail attendu. Les liens de kiosque sont utiles lorsque les participants signent eux-mêmes sur un poste dédié.") }}
+  </section>
+
+  {% if session.session_type == 'COLLECTIF' %}
+  <section class="section-card">
+    <h2 style="margin-top:0;">Documents de session</h2>
+    <div class="row" style="gap:10px; flex-wrap:wrap;">
+      <a class="btn" href="{{ url_for('activite.download_collectif_archive', session_id=session.id, kind='docx') }}">Télécharger DOCX</a>
+      <a class="btn" href="{{ url_for('activite.download_collectif_archive', session_id=session.id, kind='pdf') }}">Télécharger PDF</a>
+    </div>
+    <div class="spacer"></div>
+    <div class="emargement-form-grid">
+      <form method="post" action="{{ url_for('activite.upload_collectif_corrected', session_id=session.id) }}" enctype="multipart/form-data">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <label>Déposer une version corrigée (DOCX ou PDF)</label>
+        <div class="row" style="gap:8px; flex-wrap:wrap;">
+          <input class="in" type="file" name="file" accept=".docx,.pdf" required>
+          <button class="btn" type="submit">Envoyer</button>
+        </div>
+        <div class="muted">Déposez ici une version corrigée si vous avez ajusté le document après téléchargement. La version déposée sera utilisée pour les prochains téléchargements.</div>
+      </form>
+      <form method="post" action="{{ url_for('activite.email_collectif_archive', session_id=session.id) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <label>Envoyer par e-mail (si la messagerie est configurée)</label>
+        <input class="in" name="to" placeholder="destinataire@exemple.fr" required>
+        <div class="row" style="gap:8px; margin-top:8px; flex-wrap:wrap;">
+          <button class="btn" type="submit">Envoyer</button>
+        </div>
+        <div class="muted">Le PDF est envoyé en priorité lorsqu'il est disponible. À défaut, le document DOCX est envoyé.</div>
+      </form>
+    </div>
+  </section>
+  {% endif %}
+
+  {% if session.kiosk_open %}
+  <section class="section-card">
+    <h2 style="margin-top:0;">Kiosque de signature</h2>
+    <div class="muted">
+      Code session kiosque : <strong id="kiosk-pin" style="font-size:20px;">{{ session.kiosk_pin or '—' }}</strong> <button type="button" class="btn copy-btn" data-copy-target="#kiosk-pin">Copier le code</button>
+    </div>
+    <div class="muted" style="margin-top:8px;">
+      Lien kiosque (général) : <code>{{ request.url_root }}kiosk</code>
+      <br>
+      Lien direct de cette session : <code id="kiosk-link">{{ request.url_root }}kiosk/session/{{ session.kiosk_token }}</code> <button type="button" class="btn copy-btn" data-copy-target="#kiosk-link">Copier le lien</button>
+    </div>
+  </section>
+  {% endif %}
+
+  {% if schedule_edits %}
+  <section class="section-card">
+    <h2 style="margin-top:0;">Traçabilité des corrections de planning</h2>
+    <div class="tablewrap">
+      <table>
+        <thead>
+          <tr><th>Quand</th><th>Avant</th><th>Après</th><th>Raison</th><th>Par</th></tr>
+        </thead>
+        <tbody>
+          {% for e in schedule_edits %}
+            <tr>
+              <td>{{ e.edited_at }}</td>
+              <td>{{ e.old_date }} {{ e.old_start or '' }}{% if e.old_end %}-{{ e.old_end }}{% endif %}</td>
+              <td>{{ e.new_date }} {{ e.new_start or '' }}{% if e.new_end %}-{{ e.new_end }}{% endif %}</td>
+              <td>{{ e.reason }}</td>
+              <td>{{ e.editor.nom if e.editor and e.editor.nom else (e.editor.email if e.editor else '—') }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="card">
+    <h2 style="margin-top:0;">Modules pédagogiques de la session</h2>
+    <div class="muted">Associez les modules réellement travaillés pendant cette session pour préparer les compétences proposées lors de l’évaluation.</div>
+
+    <form method="post" class="mt-2">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="action" value="update_session_modules">
+
+      {% if modules_available and modules_available|length %}
+        <div class="grid" style="grid-template-columns:repeat(3,minmax(220px,1fr)); gap:10px;">
+          {% for mod in modules_available %}
+            <label class="row" style="gap:8px; align-items:center; border:1px solid rgba(0,0,0,.08); padding:8px 10px; border-radius:10px;">
+              <input type="checkbox" name="module_ids" value="{{ mod.id }}" {% if mod.id in current_module_ids %}checked{% endif %}>
+              <div>
+                <strong>{{ mod.nom }}</strong>
+                {% if mod.description %}<div class="muted" style="font-size:12px;">{{ mod.description }}</div>{% endif %}
+              </div>
+            </label>
+          {% endfor %}
+        </div>
+        <div class="spacer"></div>
+        <button class="btn ok" type="submit">Mettre à jour les modules</button>
+      {% else %}
+        <div class="muted">Aucun module n'est disponible pour cet atelier. Vérifiez le rattachement projet → atelier → module.</div>
+      {% endif %}
+    </form>
+  </div>
+
+  <div class="grid" style="grid-template-columns:1fr; gap:12px;">
+    <div class="card">
+      <h2 style="margin-top:0;">Enregistrer une présence</h2>
+
+      <form method="post" id="emargeForm">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="action" value="emarger">
+        <input type="hidden" name="signature_data" id="signature_data">
+
+        <div class="emargement-form-grid">
+          <div>
+            <label>Participant</label>
+            <select class="in" name="participant_id" required>
+              <option value="">— Choisir —</option>
+              {% for p in participants %}
+                <option value="{{ p.id }}">{{ p.nom }} {{ p.prenom }}{% if p.ville %} · {{ p.ville }}{% endif %}</option>
+              {% endfor %}
+            </select>
+            <div class="muted">Sélectionnez le participant dans la liste puis enregistrez sa présence avec une signature.</div>
+          </div>
+
+          <div>
+            <label>Motif</label>
+            <select class="in" name="motif">
+              <option value="">—</option>
+              {% for m in motifs %}
+                <option value="{{ m }}">{{ m }}</option>
+              {% endfor %}
+              <option value="Autre">Autre</option>
+            </select>
+            <input class="in" type="text" name="motif_autre" placeholder="Si nécessaire, précisez le motif" style="margin-top:8px;">
+          </div>
+        </div>
+
+        <div class="spacer"></div>
+
+        <label>Signature</label>
+        <div style="border:1px solid var(--border); border-radius:14px; padding:10px; background: var(--surface-soft);">
+          <canvas id="sig" width="700" height="180" style="width:100%; height:180px; background:white; border-radius:10px;"></canvas>
+          <div class="row" style="gap:10px; margin-top:10px; flex-wrap:wrap;">
+            <button class="btn" type="button" id="clearSig">Effacer</button>
+            <button class="btn" type="submit">Enregistrer la présence</button>
+          </div>
+        </div>
+      </form>
+    </div>
+
+    <div class="card">
+      <div class="row" style="justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
+        <h2 style="margin-top:0;">Présences déjà enregistrées</h2>
+        {% if session_competences and presences %}
+          <div class="row" style="gap:10px; flex-wrap:wrap;">
+            <a class="btn" href="{{ url_for('activite.evaluation_batch', session_id=session.id) }}">Évaluer en grille</a>
+            <button class="btn" type="button" id="openBulkEval">Évaluer la sélection</button>
+            <form method="post" style="margin:0;">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <input type="hidden" name="action" value="bulk_validate">
+              <button class="btn ok" type="submit">Tout valider</button>
+            </form>
+          </div>
+        {% endif %}
+      </div>
+
+      <div class="tablewrap">
+        <table>
+          <thead>
+            <tr>
+              <th style="width:44px;">
+                <input type="checkbox" id="selectAllPresences" title="Tout sélectionner" />
+              </th>
+              <th>Participant</th>
+              <th>Motif</th>
+              <th>Signature</th>
+              <th>Horodatage</th>
+              <th>Évaluation</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for pr in presences %}
+              <tr>
+                <td>
+                  {# FIX CRITIQUE: on envoie participant_id (pas pr.participant.id) #}
+                  <input type="checkbox" class="presenceCheck" value="{{ pr.participant_id }}" />
+                </td>
+                <td>
+                  <strong>{{ pr.participant.nom }} {{ pr.participant.prenom }}</strong>
+                  {% if pr.participant.ville %}<br><span class="muted">{{ pr.participant.ville }}</span>{% endif %}
+                </td>
+                <td>
+                  {{ pr.motif or '' }}
+                  {% if pr.motif_autre %}<br><span class="muted">{{ pr.motif_autre }}</span>{% endif %}
+                </td>
+                <td>
+                  {% if pr.signature_path %}<span class="muted">OK</span>{% else %}<span class="muted">—</span>{% endif %}
+                </td>
+                <td class="muted">{{ pr.created_at }}</td>
+                <td>
+                  {% if session_competences %}
+                    <button class="btn ok" type="button" data-bs-toggle="modal" data-bs-target="#evalModal{{ pr.participant.id }}">
+                      Évaluer individuellement
+                    </button>
+                    <a class="btn" href="{{ url_for('activite.evaluation_batch', session_id=session.id) }}#p{{ pr.participant.id }}">Grille batch</a>
+                  {% else %}
+                    <span class="muted">Aucune compétence</span>
+                  {% endif %}
+                  <button class="btn" type="button" data-bs-toggle="modal" data-bs-target="#passportNoteModal{{ pr.participant.id }}">
+                    Ajouter une note au passeport
+                  </button>
+                  <a class="btn" href="{{ url_for('pedagogie.participant_passeport', participant_id=pr.participant.id) }}">Passeport</a>
+                </td>
+              </tr>
+            {% else %}
+              <tr><td colspan="6" class="muted">Aucune présence n'a encore été enregistrée.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    {% if session_competences and presences %}
+      <!-- Modal : évaluer une sélection de participants -->
+      <div class="modal bulk-eval-modal" id="bulkEvalModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+          <div class="modal-content" style="border-radius:16px;">
+            <div class="modal-header">
+              <h5 class="modal-title">Évaluer la sélection</h5>
+              <button type="button" class="btn" data-bs-dismiss="modal">Fermer</button>
+            </div>
+            <div class="modal-body">
+              <form method="post" id="bulkEvalForm" action="{{ url_for('activite.emargement', session_id=session.id) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="action" value="bulk_eval_selected">
+
+                <p class="muted" style="margin-top:0;">
+                  Sélectionnez plusieurs participants dans le tableau, choisissez les compétences concernées puis appliquez le même niveau d'évaluation à l'ensemble de la sélection.
+                </p>
+
+                <div class="grid" style="grid-template-columns: 1fr 1fr; gap:12px;">
+                  <div>
+                    <label>État appliqué</label>
+                    <select class="in" name="etat" required>
+                      <option value="0">0 · Non observé</option>
+                      <option value="1">1 · En cours</option>
+                      <option value="2" selected>2 · Acquis</option>
+                      <option value="3">3 · Maîtrisé</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label>Commentaire facultatif</label>
+                    <input class="in" name="commentaire" placeholder="Commentaire identique pour la sélection">
+                  </div>
+                </div>
+
+                <div class="spacer"></div>
+                <label>Compétences à appliquer</label>
+                <div class="grid" style="grid-template-columns:repeat(2,minmax(220px,1fr)); gap:8px;">
+                  {% for c in session_competences %}
+                    <label style="display:flex; gap:8px; align-items:center;">
+                      <input type="checkbox" name="competence_ids" value="{{ c.id }}">
+                      <span>{{ c.code }} · {{ c.nom }}</span>
+                    </label>
+                  {% endfor %}
+                </div>
+
+                <!-- Les participant_ids sont injectés en JS à partir des checkboxes du tableau -->
+                <div id="bulkEvalSelected"></div>
+
+                <div class="spacer"></div>
+                <div class="row" style="gap:10px; align-items:center;">
+                  <button class="btn ok" type="submit" id="bulkApplyBtn" disabled>
+                    Appliquer à <span id="bulkCount">0</span> participant(s)
+                  </button>
+                  <button class="btn" type="button" data-bs-dismiss="modal">Annuler</button>
+                </div>
+              </form>
+              <div class="muted" style="margin-top:8px;">
+                Le bouton « Tout valider » permet de sélectionner rapidement l'ensemble des participants affichés.
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    {% endif %}
+
+    <div class="card">
+      <h2 style="margin-top:0;">Créer un participant</h2>
+      <form method="post">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="action" value="add_participant">
+        <div class="emargement-form-grid">
+          <div>
+            <label>Nom</label>
+            <input class="in" name="nom" required>
+          </div>
+          <div>
+            <label>Prénom</label>
+            <input class="in" name="prenom" required>
+          </div>
+          <div>
+            <label>Ville</label>
+            <input class="in" name="ville" placeholder="Creil" data-ville-input>
+          </div>
+          <div>
+            <label>Quartier</label>
+            <select class="in" name="quartier_id" data-quartier-select>
+              <option value="">—</option>
+              {% for q in quartiers %}
+                <option value="{{ q.id }}" data-ville="{{ q.ville }}">{{ q.ville }} — {{ q.nom }}{% if q.is_qpv %} (QPV){% endif %}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div>
+            <label>Type de public (H/S/B/A/P)</label>
+            <select class="in" name="type_public">
+              <option value="H" selected>H</option>
+              <option value="S">S</option>
+              <option value="B">B</option>
+              <option value="A">A</option>
+              <option value="P">P</option>
+            </select>
+          </div>
+          <div>
+            <label>Email (optionnel)</label>
+            <input class="in" type="email" name="email" placeholder="prenom.nom@example.com">
+          </div>
+          <div>
+            <label>Téléphone (optionnel)</label>
+            <input class="in" type="tel" name="telephone" placeholder="06 12 34 56 78">
+          </div>
+          <div>
+            <label>Date de naissance</label>
+            <input class="in" type="date" name="date_naissance" placeholder="YYYY-MM-DD">
+          </div>
+          <div>
+            <label>Genre</label>
+            <select class="in" name="genre">
+              <option value="">—</option>
+              <option value="Femme">Femme</option>
+              <option value="Homme">Homme</option>
+              <option value="Autre">Autre</option>
+              <option value="Préférez ne pas répondre">Préférez ne pas répondre</option>
+            </select>
+          </div>
+        </div>
+        <div class="spacer"></div>
+        <button class="btn" type="submit">Créer le participant</button>
+        <div class="muted">Le participant pourra ensuite être complété ou corrigé depuis la gestion des participants.</div>
+      </form>
+    </div>
+  </div>
+</div>
+
+{% for pr in presences %}
+  <div class="modal fade" id="passportNoteModal{{ pr.participant.id }}" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">Note rapide · {{ pr.participant.nom }} {{ pr.participant.prenom }}</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fermer"></button>
+        </div>
+        <form method="post">
+          <div class="modal-body">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="action" value="quick_passport_note">
+            <input type="hidden" name="participant_id" value="{{ pr.participant.id }}">
+            <label>Texte</label>
+            <textarea class="in" name="contenu" rows="3" required placeholder="Observation rapide"></textarea>
+            <div class="spacer"></div>
+            <label>Catégorie</label>
+            <select class="in" name="categorie">
+              <option value="session">Session</option>
+              <option value="progression">Progression</option>
+              <option value="participation">Participation</option>
+              <option value="temoignage">Témoignage</option>
+            </select>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn" data-bs-dismiss="modal">Annuler</button>
+            <button type="submit" class="btn ok">Enregistrer</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  {% if session_competences %}
+    <div class="modal fade eval-modal" id="evalModal{{ pr.participant.id }}" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title">Évaluation · {{ pr.participant.nom }} {{ pr.participant.prenom }}</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fermer"></button>
+          </div>
+          <form method="post">
+            <div class="modal-body">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <input type="hidden" name="action" value="save_evaluation">
+              <input type="hidden" name="participant_id" value="{{ pr.participant.id }}">
+              {% for payload in objectifs_payload %}
+                <div class="card" style="margin-bottom:12px;">
+                  <strong>{{ payload.objectif.titre }}</strong>
+                  <div class="muted">{{ payload.objectif.description or '' }}</div>
+                  {% if payload.competences %}
+                    <div class="spacer"></div>
+                    {% for comp in payload.competences %}
+                      {% set eval = evaluation_map.get((pr.participant.id, comp.id)) %}
+                      <div style="margin-bottom:10px;">
+                        <div>
+                          <strong>{{ comp.code }} · {{ comp.nom }}</strong>
+                          <div class="muted">{{ comp.description or '' }}</div>
+                        </div>
+                        <input type="hidden" name="competence_ids" value="{{ comp.id }}">
+                        <div class="row" style="gap:10px; flex-wrap:wrap; margin-top:8px;">
+                          <label class="badge bg-danger">
+                            <input class="form-check-input me-1" type="radio" name="etat_{{ comp.id }}" value="0" {% if eval and eval.etat == 0 %}checked{% endif %}>
+                            0 · Non abordé
+                          </label>
+                          <label class="badge bg-warning text-dark">
+                            <input class="form-check-input me-1" type="radio" name="etat_{{ comp.id }}" value="1" {% if eval and eval.etat == 1 %}checked{% endif %}>
+                            1 · Vu / compris
+                          </label>
+                          <label class="badge bg-success">
+                            <input class="form-check-input me-1" type="radio" name="etat_{{ comp.id }}" value="2" {% if eval and eval.etat == 2 %}checked{% endif %}>
+                            2 · Fait avec aide
+                          </label>
+                          <label class="badge bg-primary">
+                            <input class="form-check-input me-1" type="radio" name="etat_{{ comp.id }}" value="3" {% if eval and eval.etat == 3 %}checked{% endif %}>
+                            3 · Fait seul
+                          </label>
+                        </div>
+                        <div class="spacer"></div>
+                        <input class="in" type="text" name="commentaire_{{ comp.id }}" placeholder="Commentaire facultatif" value="{{ eval.commentaire if eval and eval.commentaire else '' }}">
+                      </div>
+                    {% endfor %}
+                  {% else %}
+                    <div class="muted">Aucune compétence liée à cet objectif.</div>
+                  {% endif %}
+                </div>
+              {% endfor %}
+
+              {% if not objectifs_payload and session_competences %}
+                <div class="card" style="margin-bottom:12px;">
+                  <strong>Compétences de la session</strong>
+                  <div class="muted">Aucun objectif n'est encore défini pour cette session. Les compétences issues des modules restent toutefois évaluables.</div>
+                  <div class="spacer"></div>
+                  {% for comp in session_competences %}
+                    {% set eval = evaluation_map.get((pr.participant.id, comp.id)) %}
+                    <div style="margin-bottom:10px;">
+                      <div>
+                        <strong>{{ comp.code }} · {{ comp.nom }}</strong>
+                        <div class="muted">{{ comp.description or '' }}</div>
+                      </div>
+                      <input type="hidden" name="competence_ids" value="{{ comp.id }}">
+                      <div class="row" style="gap:10px; flex-wrap:wrap; margin-top:8px;">
+                        <label class="badge bg-danger"><input class="form-check-input me-1" type="radio" name="etat_{{ comp.id }}" value="0" {% if eval and eval.etat == 0 %}checked{% endif %}>0 · Non abordé</label>
+                        <label class="badge bg-warning text-dark"><input class="form-check-input me-1" type="radio" name="etat_{{ comp.id }}" value="1" {% if eval and eval.etat == 1 %}checked{% endif %}>1 · Vu / compris</label>
+                        <label class="badge bg-success"><input class="form-check-input me-1" type="radio" name="etat_{{ comp.id }}" value="2" {% if eval and eval.etat == 2 %}checked{% endif %}>2 · Fait avec aide</label>
+                        <label class="badge bg-primary"><input class="form-check-input me-1" type="radio" name="etat_{{ comp.id }}" value="3" {% if eval and eval.etat == 3 %}checked{% endif %}>3 · Fait seul</label>
+                      </div>
+                      <div class="spacer"></div>
+                      <input class="in" type="text" name="commentaire_{{ comp.id }}" placeholder="Commentaire facultatif" value="{{ eval.commentaire if eval and eval.commentaire else '' }}">
+                    </div>
+                  {% endfor %}
+                </div>
+              {% endif %}
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn" data-bs-dismiss="modal">Annuler</button>
+              <button type="submit" class="btn ok">Enregistrer</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  {% endif %}
+{% endfor %}
+
+<script>
+(() => {
+  const canvas = document.getElementById('sig');
+  if(!canvas) return;
+  const ctx = canvas.getContext('2d');
+  let drawing = false;
+  let last = null;
+
+  function pos(e){
+    const r = canvas.getBoundingClientRect();
+    const x = (e.touches ? e.touches[0].clientX : e.clientX) - r.left;
+    const y = (e.touches ? e.touches[0].clientY : e.clientY) - r.top;
+    return {x: x * (canvas.width/r.width), y: y * (canvas.height/r.height)};
+  }
+
+  function start(e){ drawing = true; last = pos(e); e.preventDefault(); }
+  function move(e){
+    if(!drawing) return;
+    const p = pos(e);
+    ctx.lineWidth = 2;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(last.x, last.y);
+    ctx.lineTo(p.x, p.y);
+    ctx.stroke();
+    last = p;
+    e.preventDefault();
+  }
+  function end(e){ drawing = false; last = null; e.preventDefault(); }
+
+  canvas.addEventListener('mousedown', start);
+  canvas.addEventListener('mousemove', move);
+  window.addEventListener('mouseup', end);
+  canvas.addEventListener('touchstart', start, {passive:false});
+  canvas.addEventListener('touchmove', move, {passive:false});
+  canvas.addEventListener('touchend', end, {passive:false});
+
+  const clearBtn = document.getElementById('clearSig');
+  if(clearBtn){
+    clearBtn.addEventListener('click', () => {
+      ctx.clearRect(0,0,canvas.width,canvas.height);
+    });
+  }
+
+  const form = document.getElementById('emargeForm');
+  if(form){
+    form.addEventListener('submit', () => {
+      const out = document.getElementById('signature_data');
+      if(out) out.value = canvas.toDataURL('image/png');
+    });
+  }
+})();
+</script>
+{% endblock %}
+
+{% block scripts_extra %}
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <script>
+  (function(){
+    const selectAll = document.getElementById('selectAllPresences');
+    const checks = Array.from(document.querySelectorAll('.presenceCheck'));
+    const container = document.getElementById('bulkEvalSelected');
+    const form = document.getElementById('bulkEvalForm');
+    const openBtn = document.getElementById('openBulkEval');
+    const modalEl = document.getElementById('bulkEvalModal');
+
+    const bulkCount = document.getElementById('bulkCount');
+    const bulkApplyBtn = document.getElementById('bulkApplyBtn');
+
+    function selectedChecks(){
+      return checks.filter(c => c.checked);
+    }
+
+    function syncHidden(){
+      if(!container) return;
+      container.innerHTML = '';
+
+      const selected = selectedChecks();
+      selected.forEach(c => {
+        const input = document.createElement('input');
+        input.type = 'hidden';
+        input.name = 'participant_ids';
+        input.value = c.value;
+        container.appendChild(input);
+      });
+
+      if(bulkCount) bulkCount.textContent = selected.length;
+      if(bulkApplyBtn) bulkApplyBtn.disabled = (selected.length === 0);
+    }
+
+    if(selectAll){
+      selectAll.addEventListener('change', () => {
+        checks.forEach(c => c.checked = selectAll.checked);
+        syncHidden();
+      });
+    }
+
+    checks.forEach(c => c.addEventListener('change', () => {
+      if(selectAll){
+        const allOn = checks.length > 0 && checks.every(x => x.checked);
+        const anyOn = checks.some(x => x.checked);
+        selectAll.indeterminate = anyOn && !allOn;
+        selectAll.checked = allOn;
+      }
+      syncHidden();
+    }));
+
+    // Ouverture du modal : on refuse si 0 sélection
+    if(openBtn && modalEl){
+      openBtn.addEventListener('click', () => {
+        const n = selectedChecks().length;
+        if(n === 0){
+          alert('Coche au moins un participant dans la liste avant d’évaluer la sélection.');
+          return;
+        }
+        syncHidden();
+        const m = new bootstrap.Modal(modalEl);
+        m.show();
+      });
+    }
+
+    // Empêche l'envoi si rien n'est coché (UX)
+    if(form){
+      form.addEventListener('submit', (e) => {
+        const selected = selectedChecks();
+        if(selected.length === 0){
+          e.preventDefault();
+          alert('Sélectionne au moins un participant dans la liste.');
+          return;
+        }
+        syncHidden();
+      });
+    }
+
+    // Sync au chargement
+    syncHidden();
+  })();
+  </script>
+{% endblock %}

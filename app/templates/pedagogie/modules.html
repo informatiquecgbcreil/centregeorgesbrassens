@@ -1,0 +1,38 @@
+{% extends 'layout.html' %}
+{% block body %}
+<div class="stack">
+  <div class="card">
+    <h1 style="margin-top:0;">Modules pédagogiques</h1>
+    <p class="muted">Packs réutilisables pour pré-sélectionner rapidement des compétences en création de session.</p>
+    <form method="post" class="stack">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="action" value="create_module">
+      <label>Nom du module</label>
+      <input class="in" name="nom" required>
+      <label>Description</label>
+      <textarea class="in" name="description" rows="2"></textarea>
+      <h3>Compétences du module</h3>
+      {% for ref in referentiels %}
+        <div class="card" style="background:var(--surface-soft)">
+          <strong>{{ ref.nom }}</strong>
+          {% for comp in ref.competences %}
+            <label style="display:block;"><input type="checkbox" name="competence_ids" value="{{ comp.id }}"> {{ comp.code }} · {{ comp.nom }}</label>
+          {% endfor %}
+        </div>
+      {% endfor %}
+      <button class="btn ok" type="submit">Créer le module</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <h2 style="margin-top:0;">Modules existants</h2>
+    <ul>
+      {% for mod in modules %}
+        <li><strong>{{ mod.nom }}</strong> — {{ mod.competences|length }} compétences</li>
+      {% else %}
+        <li class="muted">Aucun module</li>
+      {% endfor %}
+    </ul>
+  </div>
+</div>
+{% endblock %}

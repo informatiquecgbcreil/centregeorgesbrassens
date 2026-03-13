@@ -1,0 +1,79 @@
+{% extends 'kiosk/base.html' %}
+{% block body %}
+  <div class="card">
+    <h1 style="margin:0;">Ressenti participant</h1>
+    <p class="muted" style="margin:6px 0 0 0;">{{ session_label }}</p>
+  </div>
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      <div class="card">
+        {% for cat,msg in messages %}
+          <div class="alert {{ cat }}" style="margin:6px 0;">{{ msg }}</div>
+        {% endfor %}
+      </div>
+    {% endif %}
+  {% endwith %}
+
+  <div class="card">
+    {% if questionnaires %}
+      <form method="post" class="stack" style="gap:10px;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+        <div class="grid" style="grid-template-columns:1fr 1fr; gap:12px;">
+          <div>
+            <label>Questionnaire</label>
+            <select class="in" name="questionnaire_id" onchange="this.form.submit()">
+              {% for q in questionnaires %}
+                <option value="{{ q.id }}" {% if selected_questionnaire and selected_questionnaire.id == q.id %}selected{% endif %}>{{ q.nom }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div>
+            <label>Votre nom (optionnel)</label>
+            <select class="in" name="participant_id">
+              <option value="">Réponse anonyme / non listée</option>
+              {% for p in presences %}
+                <option value="{{ p.id }}">{{ p.nom }} {{ p.prenom }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+
+        {% for question in questions %}
+          <div>
+            <label>{{ question.label }}</label>
+            {% if question.kind == 'scale' %}
+              <select class="in" name="question_{{ question.id }}">
+                <option value="">—</option>
+                {% for i in [1,2,3,4,5] %}
+                  <option value="{{ i }}">{{ i }}</option>
+                {% endfor %}
+              </select>
+            {% elif question.kind == 'yesno' %}
+              <select class="in" name="question_{{ question.id }}">
+                <option value="">—</option>
+                <option value="oui">Oui</option>
+                <option value="non">Non</option>
+              </select>
+            {% elif question.kind == 'multi' %}
+              <div class="stack" style="gap:6px;">
+                {% for opt in options_map.get(question.id, []) %}
+                  <label><input type="checkbox" name="question_{{ question.id }}" value="{{ opt }}"> {{ opt }}</label>
+                {% endfor %}
+              </div>
+            {% else %}
+              <textarea class="in" name="question_{{ question.id }}" rows="3"></textarea>
+            {% endif %}
+          </div>
+        {% endfor %}
+
+        <div style="text-align:right;">
+          <button class="btn" type="submit">Envoyer mon ressenti</button>
+        </div>
+      </form>
+    {% else %}
+      <div class="muted">Aucun questionnaire actif n'est configuré pour cette séance.</div>
+    {% endif %}
+  </div>
+{% endblock %}

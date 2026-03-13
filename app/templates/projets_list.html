@@ -1,0 +1,65 @@
+{% extends "layout.html" %}
+{% import "_ux_helpers.html" as ux %}
+{% block body %}
+<div class="page-shell dense-list-shell stack">
+  <div class="page-header">
+    <div class="page-title-wrap">
+      <h1 class="page-title">Projets</h1>
+      <p class="page-subtitle">Consultez les projets, leur niveau de financement et l’état du suivi budgétaire depuis une vue unique.</p>
+    </div>
+    <div class="hero-actions">
+      <a class="btn ok" href="{{ url_for('projets.projets_new') }}">Créer un projet</a>
+    </div>
+  </div>
+
+  <div class="section-card compact">
+    <div class="table-toolbar">
+      <div class="muted">Chaque projet permet de regrouper les subventions liées, le compte-rendu, les activités rattachées et les éléments budgétaires associés.</div>
+    </div>
+    {{ ux.helper('Le compte-rendu est signalé dans la colonne dédiée. Ouvrez un projet pour gérer ses subventions, ses indicateurs et son budget détaillé.') }}
+    <div class="tablewrap clean">
+      <table class="js-sortable">
+        <thead>
+          <tr>
+            <th>Secteur</th>
+            <th>Projet</th>
+            <th>Compte-rendu</th>
+            <th>Demandé</th>
+            <th>Accordé</th>
+            <th>Reçu</th>
+            <th>Engagé</th>
+            <th>Reste</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for p in projets %}
+            <tr>
+              <td>{{ p.secteur }}</td>
+              <td><strong>{{ p.nom }}</strong><div class="muted">{{ (p.description or "")[:80] }}{% if (p.description or "")|length > 80 %}…{% endif %}</div></td>
+              <td>{% if p.cr_filename %}<span class="muted">Oui</span>{% else %}<span class="muted">Non</span>{% endif %}</td>
+              <td>{{ "%.2f"|format(p.total_demande or 0) }}€</td>
+              <td>{{ "%.2f"|format(p.total_attribue or 0) }}€</td>
+              <td>{{ "%.2f"|format(p.total_recu or 0) }}€</td>
+              <td>{{ "%.2f"|format(p.total_engage or 0) }}€</td>
+              <td>{{ "%.2f"|format(p.total_reste or 0) }}€</td>
+              <td>
+                <div class="inline-actions">
+                  <a class="btn" href="{{ url_for('projets.projets_edit', projet_id=p.id) }}">Ouvrir</a>
+                  <form method="post" action="{{ url_for('projets.projets_delete', projet_id=p.id) }}" onsubmit="return confirm('Supprimer définitivement ce projet ? Cette action est irréversible.');">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button class="btn danger" type="submit">Supprimer</button>
+                  </form>
+                </div>
+              </td>
+            </tr>
+          {% endfor %}
+          {% if projets|length == 0 %}
+            <tr><td colspan="9"><div class="quick-empty"><strong>Aucun projet n’est encore enregistré.</strong>Créez un projet pour suivre ses financeurs, son compte-rendu et ses dépenses.</div></td></tr>
+          {% endif %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

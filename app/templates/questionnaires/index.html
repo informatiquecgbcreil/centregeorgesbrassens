@@ -1,0 +1,97 @@
+{% extends "layout.html" %}
+{% block body %}
+<div class="page-shell dense-list-shell stack">
+  <div class="page-header">
+    <div class="page-title-wrap">
+      <h1 class="page-title">Questionnaires d’impact</h1>
+      <p class="page-subtitle">Crée, filtre et gère les questionnaires associés aux ateliers et secteurs.</p>
+    </div>
+    {% if can('questionnaires:edit') %}
+    <div class="hero-actions">
+      <a class="btn" href="{{ url_for('questionnaires.create') }}">➕ Nouveau questionnaire</a>
+    </div>
+    {% endif %}
+  </div>
+
+  <div class="filters-panel">
+    <form method="get" class="filters-grid" data-filter-summary="true">
+      <div class="field-stack grow-2">
+        <label>Recherche</label>
+        <input class="in" name="q" placeholder="Rechercher par nom" value="{{ q }}">
+      </div>
+      <div class="hero-actions">
+        <button class="btn" type="submit">Filtrer</button>
+        {% if q %}
+          <a class="btn" href="{{ url_for('questionnaires.index') }}">Réinitialiser</a>
+        {% endif %}
+      </div>
+    </form>
+  </div>
+
+  <div class="section-card compact">
+    <div class="tablewrap clean">
+      <table class="js-sortable">
+        <thead>
+          <tr>
+            <th>Questionnaire</th>
+            <th>Statut</th>
+            <th>Secteurs</th>
+            <th>Ateliers</th>
+            <th style="width:240px;">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for q in questionnaires %}
+            <tr>
+              <td>
+                <strong>{{ q.nom }}</strong>
+                <div class="muted" style="font-size:12px;">{{ q.description or "—" }}</div>
+              </td>
+              <td>{% if q.is_active %}<span class="tag">Actif</span>{% else %}—{% endif %}</td>
+              <td class="muted">
+                {% if q.secteurs %}
+                  {{ q.secteurs | map(attribute='secteur') | join(', ') }}
+                {% else %}
+                  Tous
+                {% endif %}
+              </td>
+              <td class="muted">
+                {% if q.ateliers %}
+                  {% set names = [] %}
+                  {% for link in q.ateliers %}
+                    {% if ateliers_map.get(link.atelier_id) %}
+                      {% set _ = names.append(ateliers_map.get(link.atelier_id)) %}
+                    {% endif %}
+                  {% endfor %}
+                  {{ names | join(', ') }}
+                {% else %}
+                  Tous
+                {% endif %}
+              </td>
+              <td>
+                <div class="inline-actions">
+                  {% if can('questionnaires:edit') %}
+                    <a class="btn" href="{{ url_for('questionnaires.edit', questionnaire_id=q.id) }}">✏️ Éditer</a>
+                  {% endif %}
+                  {% if can('questionnaires:export') %}
+                    <a class="btn" href="{{ url_for('questionnaires.export_csv', questionnaire_id=q.id) }}">⬇️ Export</a>
+                  {% endif %}
+                  {% if can('questionnaires:delete') %}
+                    <form method="post" action="{{ url_for('questionnaires.delete', questionnaire_id=q.id) }}" style="display:inline;">
+                      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                      <button class="btn danger" type="submit" onclick="return confirm('Supprimer ce questionnaire ?');">🗑️ Supprimer</button>
+                    </form>
+                  {% endif %}
+                </div>
+              </td>
+            </tr>
+          {% endfor %}
+          {% if questionnaires|length == 0 %}
+            <tr><td colspan="5" class="quick-empty">Aucun questionnaire trouvé.</td></tr>
+          {% endif %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

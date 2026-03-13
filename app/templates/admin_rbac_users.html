@@ -1,0 +1,65 @@
+{% extends "layout.html" %}
+{% import "_ux_helpers.html" as ux %}
+{% block body %}
+<div class="page-shell content-shell stack">
+  <div class="page-header">
+    <div class="page-title-wrap">
+      <h1 class="page-title">Attribution des rôles et du secteur</h1>
+      <p class="page-subtitle">Mettez à jour le rôle principal et, si besoin, le secteur assigné. Les changements sont pris en compte dès l’enregistrement.</p>
+    </div>
+    <div class="hero-actions">
+      <a class="btn" href="{{ url_for('admin.rbac_roles') }}">Gérer les rôles</a>
+    </div>
+  </div>
+
+  {{ ux.callout("Rôle principal", "Cette vue permet de remplacer le rôle principal d'un utilisateur. Laissez le champ du secteur vide si le compte ne doit pas être limité à un secteur précis.") }}
+
+  <div class="section-card compact">
+    <div class="tablewrap clean">
+      <table>
+        <thead>
+          <tr>
+            <th>Utilisateur</th>
+            <th>Rôle</th>
+            <th>Secteur assigné</th>
+            <th style="width:360px;">Mise à jour</th>
+          </tr>
+        </thead>
+        <tbody>
+        {% for u in users %}
+          <tr>
+            <td>
+              <strong>{{ u.nom }}</strong><br>
+              <span class="muted">{{ u.email }}</span>
+            </td>
+            <td>{{ u.role_codes|join(', ') }}</td>
+            <td>{{ u.secteur_assigne or "" }}</td>
+            <td>
+              <form method="post" action="{{ url_for('admin.rbac_user_set_role', user_id=u.id) }}" class="filters-grid">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <div class="field-stack">
+                  <label>Rôle</label>
+                  <select class="input" name="role">
+                    <option value="">Conserver le rôle actuel</option>
+                    {% for r in roles %}
+                      <option value="{{ r.name }}">{{ r.name }}</option>
+                    {% endfor %}
+                  </select>
+                </div>
+                <div class="field-stack">
+                  <label>Secteur assigné</label>
+                  <input class="input" name="secteur_assigne" placeholder="Secteur facultatif" value="{{ u.secteur_assigne or '' }}">
+                </div>
+                <div class="hero-actions">
+                  <button class="btn" type="submit">Appliquer</button>
+                </div>
+              </form>
+            </td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

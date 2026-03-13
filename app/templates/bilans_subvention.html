@@ -1,0 +1,68 @@
+{% extends "layout.html" %}
+{% import "_ux_helpers.html" as ux %}
+{% block body %}
+  {% if forbidden %}
+    <div class="finance-card"><h1 class="finance-title">Bilans et pilotage · Bilan par subvention</h1><p class="finance-subtitle">Accès réservé aux rôles finance, direction ou responsable de secteur.</p></div>
+  {% else %}
+    <div class="finance-shell finance-shell--single wide-shell">
+      <section class="finance-hero">
+        <div class="finance-hero__top">
+          <div>
+            <div class="finance-inline">
+              <h1 class="finance-title">Bilan par subvention</h1>
+              <form method="get" action="{{ url_for('bilans.bilan_subvention') }}" class="finance-inline">
+                <label for="year" class="finance-label">Exercice</label>
+                <select id="year" name="year" onchange="this.form.submit()">{% for y in years %}<option value="{{ y }}" {% if y == year %}selected{% endif %}>{{ y }}</option>{% endfor %}</select>
+                {% if selected_subvention %}<input type="hidden" name="id" value="{{ selected_subvention.id }}">{% endif %}
+                <noscript><button class="btn" type="submit">Afficher</button></noscript>
+              </form>
+            </div>
+            <p class="finance-subtitle">Sélectionnez une subvention pour afficher son budget, ses dépenses imputées et le matériel éventuellement rattaché.</p>
+          </div>
+          <div class="finance-actions"><a class="btn" href="{{ url_for('bilans.dashboard', year=year) }}">← Tableau de bord</a><a class="btn" href="{{ url_for('bilans.bilan_secteur', year=year) }}">📊 Bilan par secteur</a></div>
+        </div>
+
+        <form method="get" action="{{ url_for('bilans.bilan_subvention') }}" class="finance-filters">
+          <input type="hidden" name="year" value="{{ year }}">
+          <div class="finance-field" style="grid-column:1/-2;">
+            <label for="id">Subvention</label>
+            <select name="id" id="id">{% for s in subventions %}<option value="{{ s.id }}" {% if selected_subvention and s.id == selected_subvention.id %}selected{% endif %}>[{{ s.secteur }}] {{ s.nom }} ({{ '%.2f'|format(s.montant_attribue) }} €)</option>{% endfor %}</select>
+          </div>
+          <div class="finance-actions"><button class="btn ok">Afficher</button></div>
+        </form>
+      </section>
+
+      {{ ux.callout("Lecture de la subvention", "Cette vue rassemble le montant accordé, les dépenses imputées et le matériel éventuellement financé. Elle est utile pour préparer un point financeur ou vérifier l’état réel de consommation d’une subvention.") }}
+
+{% if not data %}
+        <section class="finance-card"><div class="finance-empty"><strong>Aucune donnée</strong><span>Sélectionne une subvention pour afficher son bilan.</span></div></section>
+      {% else %}
+        <section class="finance-card">
+          <div class="finance-card__head"><div><h2 class="finance-card__title">Synthèse</h2><p class="finance-card__hint">Les principaux indicateurs de suivi avant la lecture détaillée.</p></div></div>
+          <div class="finance-kpis">
+            <article class="finance-kpi"><div class="finance-kpi__label">Montant accordé</div><div class="finance-kpi__value">{{ '%.2f'|format(data.kpis.montant_accorde) }} €</div><div class="finance-kpi__help">Montant attribué, ou budget réel des lignes si cette information est absente.</div></article>
+            <article class="finance-kpi"><div class="finance-kpi__label">Dépenses imputées</div><div class="finance-kpi__value">{{ '%.2f'|format(data.kpis.depenses) }} €</div></article>
+            <article class="finance-kpi"><div class="finance-kpi__label">Taux de consommation</div><div class="finance-kpi__value">{{ '%.1f'|format(data.kpis.taux) }} %</div><div class="finance-rail finance-rail--ok"><span style="width:{{ 0 if data.kpis.taux < 0 else (100 if data.kpis.taux > 100 else data.kpis.taux) }}%"></span></div></article>
+            <article class="finance-kpi"><div class="finance-kpi__label">Écart</div><div class="finance-kpi__value">{{ '%.2f'|format(data.kpis.ecart) }} €</div><div class="finance-kpi__help">Montant accordé moins dépenses imputées.</div></article>
+          </div>
+        </section>
+
+        <section class="finance-split finance-split--stacked">
+          <div class="finance-card">
+            <div class="finance-card__head"><div><h2 class="finance-card__title">Dépenses imputées</h2><p class="finance-card__hint">Factures et lignes réellement rattachées à cette subvention.</p></div></div>
+            {% if data.depenses %}
+              <div class="finance-scroll-guard tablewrap clean"><table class="finance-table finance-table--compact finance-sticky-head"><thead><tr><th>Date</th><th>Fournisseur</th><th>Libellé</th><th>Ligne</th><th>Référence</th><th class="num">Montant</th></tr></thead><tbody>{% for d in data.depenses %}<tr><td class="muted">{{ d.date }}</td><td>{{ d.fournisseur }}</td><td><strong>{{ d.libelle }}</strong></td><td class="muted">{{ d.compte }} · {{ d.ligne }}</td><td class="muted">{{ d.reference }}</td><td class="num"><strong>{{ '%.2f'|format(d.montant) }} €</strong></td></tr>{% endfor %}</tbody></table></div>
+            {% else %}<div class="finance-empty"><strong>Aucune dépense imputée</strong><span>Cette subvention n'a pas encore de dépense rattachée.</span></div>{% endif %}
+          </div>
+
+          <div class="finance-card">
+            <div class="finance-card__head"><div><h2 class="finance-card__title">Matériel lié</h2><p class="finance-card__hint">Inventaire créé à partir des lignes de facture imputées.</p></div></div>
+            {% if data.materiel %}
+              <div class="finance-scroll-guard tablewrap clean"><table class="finance-table finance-table--compact finance-sticky-head"><thead><tr><th>ID interne</th><th>Désignation</th><th>État</th><th>Localisation</th><th class="num">Valeur</th></tr></thead><tbody>{% for m in data.materiel %}<tr><td class="muted">{{ m.id_interne }}</td><td><strong>{{ m.designation }}</strong></td><td>{{ m.etat }}</td><td class="muted">{{ m.localisation }}</td><td class="num">{% if m.valeur != '' %}{{ '%.2f'|format(m.valeur) }} €{% endif %}</td></tr>{% endfor %}</tbody></table></div>
+            {% else %}<div class="finance-empty"><strong>Aucun matériel lié</strong><span>Aucun matériel n'a encore été inventorié à partir de cette subvention.</span></div>{% endif %}
+          </div>
+        </section>
+      {% endif %}
+    </div>
+  {% endif %}
+{% endblock %}
