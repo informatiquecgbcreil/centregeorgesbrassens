@@ -3,7 +3,7 @@
 <div class="card">
   <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;">
     <h1 style="margin:0;">🎭 Rôles</h1>
-    <a class="btn" href="{{ url_for('admin.rbac_role_new') }}">+ Nouveau rôle</a>
+    <a class="btn" href="{{ url_for('admin.droits') }}">+ Nouveau rôle</a>
   </div>
 
   <p style="opacity:.8; margin-top:8px;">
@@ -39,10 +39,11 @@
           </div>
         </td>
         <td>
-          <a class="btn" href="{{ url_for('admin.rbac_role_edit', role_id=r.id) }}">Éditer</a>
+          <a class="btn" href="{{ url_for('admin.droits') }}">Éditer</a>
           {% if not r.is_system %}
-          <form method="post" action="{{ url_for('admin.rbac_role_delete', role_id=r.id) }}" style="display:inline;">
+          <form method="post" action="{{ url_for('admin.delete_role') }}" style="display:inline;">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="role_code" value="{{ r.code if r.code is defined else r.name }}">
             <button class="btn danger" type="submit" onclick="return confirm('Supprimer ce rôle ?')">Supprimer</button>
           </form>
           {% endif %}

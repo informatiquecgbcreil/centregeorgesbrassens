@@ -11,7 +11,7 @@
         <p class="muted">Si erreur <em>no such table \"participants\"</em> : tu pointes vers une DB vide/incorrecte (SQLite crée un fichier vide si le chemin est faux).</p>
       </div>
       {% if can_manage %}
-      <form method="POST" action="{{ url_for('ateliers.sync_ateliers') }}">
+      <form method="POST" action="{{ safe_url_for('ateliers.sync_ateliers', fallback='#') }}">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <button class="btn ok" type="submit">🔄 Synchroniser</button>
       </form>

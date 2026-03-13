@@ -20,7 +20,7 @@
           <p class="finance-subtitle">Tableau de pilotage par subvention : montant accordé, dépenses imputées, reste, ventilation et actions rapides.</p>
         </div>
         <div class="finance-actions">
-          <form method="get" action="{{ url_for('bilans.financeurs') }}" class="finance-inline" data-filter-summary="true">
+          <form method="get" action="{{ url_for('bilans.bilan_subvention') }}" class="finance-inline" data-filter-summary="true">
             <label for="year" class="finance-label">Exercice</label>
             <select id="year" name="year" onchange="this.form.submit()">{% for y in years %}<option value="{{ y }}" {% if y == year %}selected{% endif %}>{{ y }}</option>{% endfor %}</select>
             <noscript><button class="btn" type="submit">Afficher</button></noscript>
@@ -51,7 +51,7 @@
                   <td class="num"><span class="chip {{ tone }}">{{ '%.1f'|format(r.taux) }}%</span></td>
                   <td class="num">{{ '%.2f'|format(r.a_ventiler) }} €</td>
                   <td class="num">{{ r.nb_factures }}</td>
-                  <td class="actions-cell"><div class="table-actions"><a class="btn" href="{{ url_for('bilans.bilan_subvention', year=year, id=r.id) }}">Ouvrir</a><a class="btn" href="{{ url_for('bilans.subvention_print', year=year, id=r.id) }}" target="_blank">🖨️ Imprimer</a><a class="btn" href="{{ url_for('bilans.subvention_export_csv', year=year, id=r.id) }}">CSV</a></div></td>
+                  <td class="actions-cell"><div class="table-actions"><a class="btn" href="{{ url_for('bilans.bilan_subvention', year=year, id=r.id) }}">Ouvrir</a></div></td>
                 </tr>
               {% endfor %}
             </tbody>
