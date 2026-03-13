@@ -2,7 +2,7 @@ import datetime
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
 
-from sqlalchemy import func
+from sqlalchemy import func, cast, Integer
 
 from app.extensions import db
 from app.models import Depense, FactureAchat, FactureLigne, LigneBudget, Subvention, InventaireItem
@@ -11,6 +11,21 @@ from datetime import date
 from sqlalchemy import extract
 from app.extensions import db
 from app.models import SessionActivite
+
+
+def _month_expr(date_expr):
+    """Expression SQL portable pour extraire le mois (1..12)."""
+    return cast(extract("month", date_expr), Integer)
+
+
+def _days_since_expr(date_expr):
+    """Expression SQL portable pour (current_date - date_expr) en jours."""
+    dialect = db.session.bind.dialect.name if db.session.bind is not None else "sqlite"
+    if dialect == "sqlite":
+        return func.julianday(func.current_date()) - func.julianday(date_expr)
+    # PostgreSQL: soustraction de dates => entier (jours)
+    return cast(func.current_date() - cast(date_expr, db.Date), Integer)
+
 
 
 @dataclass
@@ -152,7 +167,7 @@ def compute_depenses_mensuelles(year: int, scope: BilansScope) -> List[Dict[str,
         Depense.date_paiement,
         func.date(Depense.created_at),
     )
-    month_expr = func.strftime("%m", date_expr)
+    month_expr = _month_expr(date_expr)
 
     q = (
         db.session.query(month_expr.label("mois"), func.coalesce(func.sum(Depense.montant), 0.0).label("total"))
@@ -497,7 +512,7 @@ def compute_qualite_gestion(year: int, scope: BilansScope) -> Dict[str, object]:
         db.session.query(
             func.count(FactureLigne.id),
             func.coalesce(func.sum(FactureLigne.montant_ligne), 0.0),
-            func.avg(func.julianday(func.current_date()) - func.julianday(FactureAchat.date_facture)),
+            func.avg(_days_since_expr(FactureAchat.date_facture)),
         )
         .join(FactureAchat, FactureLigne.facture_id == FactureAchat.id)
         .filter(FactureLigne.a_ventiler.is_(True))

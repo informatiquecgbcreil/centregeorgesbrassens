@@ -8,7 +8,7 @@
       <p class="page-subtitle">Mettez à jour le rôle principal et, si besoin, le secteur assigné. Les changements sont pris en compte dès l’enregistrement.</p>
     </div>
     <div class="hero-actions">
-      <a class="btn" href="{{ url_for('admin.rbac_roles') }}">Gérer les rôles</a>
+      <a class="btn" href="{{ url_for('admin.droits') }}">Gérer les rôles</a>
     </div>
   </div>
 
@@ -35,7 +35,7 @@
             <td>{{ u.role_codes|join(', ') }}</td>
             <td>{{ u.secteur_assigne or "" }}</td>
             <td>
-              <form method="post" action="{{ url_for('admin.rbac_user_set_role', user_id=u.id) }}" class="filters-grid">
+              <form method="post" action="{{ url_for('admin.set_user_roles') }}" class="filters-grid">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <div class="field-stack">
                   <label>Rôle</label>
