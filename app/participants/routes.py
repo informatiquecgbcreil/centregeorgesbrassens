@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, date
 
 from flask import Blueprint, render_template, request, redirect, url_for, flash, abort
 from flask_login import login_required, current_user
@@ -55,30 +55,103 @@ def _can_see_participant(p: Participant) -> bool:
     return False
 
 
+def _parse_iso_date(raw: str | None) -> date | None:
+    try:
+        value = (raw or "").strip()
+        return date.fromisoformat(value) if value else None
+    except Exception:
+        return None
+
+
+def _normalize_gender_group(value: str | None) -> str:
+    raw = (value or "").strip().lower()
+    if not raw:
+        return "unknown"
+    raw = raw.replace("é", "e").replace("è", "e").replace("ê", "e").replace("à", "a")
+    if raw in {"f", "femme", "feminin", "female", "woman"}:
+        return "femmes"
+    if raw in {"h", "m", "homme", "masculin", "male", "man"}:
+        return "hommes"
+    if raw in {"autre", "non binaire", "non-binaire", "nb", "x"}:
+        return "other"
+    return "unknown"
+
+
+AGE_BUCKETS = [
+    ("0-5 ans", 0, 5),
+    ("6-11 ans", 6, 11),
+    ("12-17 ans", 12, 17),
+    ("18-25 ans", 18, 25),
+    ("26-39 ans", 26, 39),
+    ("40-59 ans", 40, 59),
+    ("60 ans et +", 60, None),
+]
+
+
+def _compute_age(dob: date | None, ref_date: date | None) -> int | None:
+    if not dob or not ref_date:
+        return None
+    years = ref_date.year - dob.year
+    if (ref_date.month, ref_date.day) < (dob.month, dob.day):
+        years -= 1
+    if years < 0 or years > 120:
+        return None
+    return years
+
+
+def _age_bucket(age: int | None) -> str | None:
+    if age is None:
+        return None
+    for label, low, high in AGE_BUCKETS:
+        if low is not None and age < low:
+            continue
+        if high is not None and age > high:
+            continue
+        return label
+    return None
+
+
+def _clean_city_label(participant: Participant) -> str:
+    quartier = getattr(participant, "quartier", None)
+    quartier_ville = (getattr(quartier, "ville", None) or "").strip()
+    participant_ville = (getattr(participant, "ville", None) or "").strip()
+    return quartier_ville or participant_ville or "Ville non renseignée"
+
+
+def _clean_quartier_label(participant: Participant) -> str:
+    quartier = getattr(participant, "quartier", None)
+    quartier_nom = (getattr(quartier, "nom", None) or "").strip()
+    return quartier_nom or "Quartier non renseigné"
+
+
 @bp.route("/")
 @login_required
+@require_perm("participants:view")
 def list_participants():
     if False:
         abort(403)
 
     q = (request.args.get("q") or "").strip()
-    scope = (request.args.get("scope") or "").strip()  # ""/secteur, created, annuaire
+    scope = (request.args.get("scope") or "").strip()
 
-    # NEW filtres dropdown
     f_ville = (request.args.get("ville") or "").strip()
     f_quartier_id = (request.args.get("quartier_id") or "").strip()
-    f_genre = (request.args.get("genre") or "").strip()             # "Homme" / "Femme" / ""
-    f_type_public = (request.args.get("type_public") or "").strip() # "H"/"F"/"A"/...
-    f_presence = (request.args.get("presence") or "").strip()       # "" / "with" / "without"
-    f_created_secteur = (request.args.get("created_secteur") or "").strip()  # global only
+    f_genre = (request.args.get("genre") or "").strip()
+    f_type_public = (request.args.get("type_public") or "").strip()
+    f_presence = (request.args.get("presence") or "").strip()
+    f_created_secteur = (request.args.get("created_secteur") or "").strip()
 
-    # Annuaire global : uniquement si recherche (>=2), sinon on retombe en sectoriel
+    dashboard_from = _parse_iso_date(request.args.get("dashboard_from"))
+    dashboard_to = _parse_iso_date(request.args.get("dashboard_to"))
+    dashboard_active = (request.args.get("dashboard_active") or "").strip() == "1"
+    genre_group = (request.args.get("genre_group") or "").strip().lower()
+    age_bucket_label = (request.args.get("age_bucket") or "").strip()
+    city_label_filter = (request.args.get("city_label") or "").strip()
+    quartier_label_filter = (request.args.get("quartier_label") or "").strip()
+
     if scope == "annuaire" and (not q or len(q) < 2):
         scope = "secteur"
 
-    # ---------------------------------------------------------
-    # 1) BASE RBAC/SCOPE (sans les dropdowns)
-    # ---------------------------------------------------------
     participants_q = Participant.query
 
     if not current_user.has_perm("participants:view_all"):
@@ -86,7 +159,6 @@ def list_participants():
         if not sec:
             abort(403)
 
-        # En mode annuaire (avec recherche), pas de restriction sectorielle
         if not (scope == "annuaire" and q and len(q) >= 2):
             if scope == "created":
                 participants_q = participants_q.filter(Participant.created_secteur == sec)
@@ -101,7 +173,6 @@ def list_participants():
                     (Participant.created_secteur == sec) | (Participant.id.in_(subq_presence_ids))
                 )
     else:
-        # rôle global : option filtre secteur (ancien comportement)
         if scope == "secteur":
             sec = (request.args.get("secteur") or "").strip()
             if sec:
@@ -110,11 +181,6 @@ def list_participants():
         if f_created_secteur:
             participants_q = participants_q.filter(Participant.created_secteur == f_created_secteur)
 
-    # ---------------------------------------------------------
-    # 2) Construire BASE_Q pour les dropdowns
-    #    (même RBAC/scope mais SANS les dropdowns pour ne pas vider les listes)
-    #    (et tu choisis si tu veux inclure q ou pas : moi je le laisse OFF)
-    # ---------------------------------------------------------
     base_q = Participant.query
 
     if not current_user.has_perm("participants:view_all"):
@@ -135,7 +201,6 @@ def list_participants():
                 base_q = base_q.filter(
                     (Participant.created_secteur == sec) | (Participant.id.in_(subq_presence_ids))
                 )
-        # en annuaire : base_q reste globale (mais ton annuaire n'affiche déjà rien sans q)
     else:
         if scope == "secteur":
             sec2 = (request.args.get("secteur") or "").strip()
@@ -145,13 +210,25 @@ def list_participants():
         if f_created_secteur:
             base_q = base_q.filter(Participant.created_secteur == f_created_secteur)
 
-    # Sous-requête des IDs (évite select_from() + compatible PG)
+    if dashboard_active and dashboard_from and dashboard_to:
+        session_date = db.func.coalesce(SessionActivite.rdv_date, SessionActivite.date_session)
+        active_ids_q = (
+            db.session.query(PresenceActivite.participant_id)
+            .join(SessionActivite, SessionActivite.id == PresenceActivite.session_id)
+            .filter(session_date.isnot(None))
+            .filter(session_date >= dashboard_from)
+            .filter(session_date <= dashboard_to)
+        )
+        if not current_user.has_perm("participants:view_all"):
+            active_ids_q = active_ids_q.filter(SessionActivite.secteur == _current_secteur())
+        active_ids_q = active_ids_q.distinct()
+        participants_q = participants_q.filter(Participant.id.in_(active_ids_q))
+        base_q = base_q.filter(Participant.id.in_(active_ids_q))
+        f_presence = "with"
+
     base_ids_sq = base_q.with_entities(Participant.id).subquery()
     base_ids_select = select(base_ids_sq.c.id)
 
-    # ---------------------------------------------------------
-    # 3) Dropdowns (filtrés sur base_q)
-    # ---------------------------------------------------------
     villes = (
         db.session.query(Participant.ville)
         .filter(Participant.ville.isnot(None))
@@ -194,9 +271,6 @@ def list_participants():
     )
     types_public = [t[0] for t in types_public]
 
-    # ---------------------------------------------------------
-    # 4) Appliquer les dropdowns SUR participants_q (la vraie liste)
-    # ---------------------------------------------------------
     if f_ville:
         participants_q = participants_q.filter(Participant.ville == f_ville)
 
@@ -213,7 +287,6 @@ def list_participants():
     if f_type_public:
         participants_q = participants_q.filter(Participant.type_public == f_type_public)
 
-    # Présence: EXISTS propre
     has_presence = exists().where(PresenceActivite.participant_id == Participant.id)
 
     if f_presence == "with":
@@ -221,9 +294,6 @@ def list_participants():
     elif f_presence == "without":
         participants_q = participants_q.filter(~has_presence)
 
-    # ---------------------------------------------------------
-    # 5) Recherche texte (tous rôles)
-    # ---------------------------------------------------------
     if q:
         like = f"%{q.lower()}%"
         participants_q = participants_q.filter(
@@ -235,7 +305,44 @@ def list_participants():
             )
         )
 
-    items = participants_q.order_by(Participant.nom.asc(), Participant.prenom.asc()).limit(1000).all()
+    items = participants_q.order_by(Participant.nom.asc(), Participant.prenom.asc()).all()
+
+    if genre_group:
+        items = [item for item in items if _normalize_gender_group(getattr(item, "genre", None)) == genre_group]
+
+    if age_bucket_label:
+        ref_date = dashboard_to or date.today()
+        normalized_age_bucket = age_bucket_label.strip().lower()
+        if normalized_age_bucket in {"âge non renseigné", "age non renseigne", "unknown", "inconnu", "non renseigne"}:
+            items = [
+                item
+                for item in items
+                if _age_bucket(_compute_age(getattr(item, "date_naissance", None), ref_date)) is None
+            ]
+        else:
+            items = [
+                item
+                for item in items
+                if _age_bucket(_compute_age(getattr(item, "date_naissance", None), ref_date)) == age_bucket_label
+            ]
+
+    if city_label_filter:
+        items = [item for item in items if _clean_city_label(item) == city_label_filter]
+
+    if quartier_label_filter:
+        items = [item for item in items if _clean_quartier_label(item) == quartier_label_filter]
+
+    items = items[:1000]
+
+    dashboard_filters = {
+        "active_period": bool(dashboard_active and dashboard_from and dashboard_to),
+        "from": dashboard_from,
+        "to": dashboard_to,
+        "genre_group": genre_group,
+        "age_bucket": age_bucket_label,
+        "city_label": city_label_filter,
+        "quartier_label": quartier_label_filter,
+    }
 
     return render_template(
         "participants/list.html",
@@ -243,24 +350,20 @@ def list_participants():
         q=q,
         scope=scope,
         secteur=_current_secteur(),
-
-        # dropdowns
         villes=villes,
         quartiers=quartiers,
         genres=genres,
         types_public=types_public,
-
-        # valeurs sélectionnées
         f_ville=f_ville,
         f_quartier_id=f_quartier_id,
         f_genre=f_genre,
         f_type_public=f_type_public,
         f_presence=f_presence,
         f_created_secteur=f_created_secteur,
-
         is_global=_is_global_role(),
+        dashboard_filters=dashboard_filters,
+        pagination=None,
     )
-
 
 @bp.route("/search")
 @login_required

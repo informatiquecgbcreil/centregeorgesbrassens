@@ -102,6 +102,22 @@ def _clean_quartier(value: str | None) -> str:
     return quartier if quartier else "Quartier non renseigné"
 
 
+
+def _month_bounds_from_key(month_key: str) -> tuple[date, date] | tuple[None, None]:
+    try:
+        year_str, month_str = (month_key or "").split("-", 1)
+        year = int(year_str)
+        month = int(month_str)
+        start = date(year, month, 1)
+        if month == 12:
+            end = date(year + 1, 1, 1) - timedelta(days=1)
+        else:
+            end = date(year, month + 1, 1) - timedelta(days=1)
+        return start, end
+    except Exception:
+        return None, None
+
+
 def _resolve_period(period_key: str | None, *, days: int, budget_year: int, today: date) -> tuple[str, date, date, str, int]:
     key = (period_key or "").strip().lower()
     if key == "year":
@@ -307,8 +323,82 @@ def build_dashboard_context(
         city_counts[city_label] = city_counts.get(city_label, 0) + 1
         quartier_counts[(city_label, quartier_label)] = quartier_counts.get((city_label, quartier_label), 0) + 1
 
+
+    activity_from_iso = since_date.isoformat()
+    activity_to_iso = until_date.isoformat()
+
+    participant_base_args = {
+        "dashboard_from": activity_from_iso,
+        "dashboard_to": activity_to_iso,
+        "dashboard_active": "1",
+        "presence": "with",
+        "scope": "secteur",
+    }
+
+    public_code_map = {
+        "Habitants": "H",
+        "Salariés": "S",
+        "Bénévoles": "B",
+        "Administrateurs": "A",
+        "Partenaires": "P",
+        "Autres": "?",
+    }
+
+    gender_urls = [
+        _safe(
+            "participants.list_participants",
+            **participant_base_args,
+            genre_group=("other" if label == "Autre" else "unknown" if label == "Non renseigné" else label.lower()),
+        )
+        for label in ["Femmes", "Hommes", "Autre", "Non renseigné"]
+    ]
+
+    age_labels = [label for (label, _, _) in AGE_BUCKETS] + ["Âge non renseigné"]
+    age_values = [age_counts[label] for (label, _, _) in AGE_BUCKETS] + [unknown_age_count]
+    age_urls = [
+        _safe("participants.list_participants", **participant_base_args, age_bucket=label)
+        for label in ([label for (label, _, _) in AGE_BUCKETS] + ["Âge non renseigné"])
+    ]
+
+    public_urls = [
+        _safe("participants.list_participants", **participant_base_args, type_public=public_code_map[label])
+        for label in ["Habitants", "Salariés", "Bénévoles", "Administrateurs", "Partenaires", "Autres"]
+    ]
+
+    dep_month_urls = []
+    sess_month_urls = []
+    for mk in month_labels:
+        month_start, month_end = _month_bounds_from_key(mk)
+        if month_start and month_end:
+            dep_month_urls.append(
+                _safe(
+                    "budget.depenses_list",
+                    date_from=month_start.isoformat(),
+                    date_to=month_end.isoformat(),
+                    budget_year=budget_year,
+                    source="dashboard",
+                )
+            )
+            sess_month_urls.append(
+                _safe(
+                    "statsimpact.dashboard",
+                    tab="magato",
+                    date_from=month_start.isoformat(),
+                    date_to=month_end.isoformat(),
+                    group_by="DAY",
+                    source="dashboard",
+                )
+            )
+        else:
+            dep_month_urls.append(_safe("budget.depenses_list"))
+            sess_month_urls.append(_safe("statsimpact.dashboard", tab="magato"))
+
     inner_city_order = [
         city for city, _count in sorted(city_counts.items(), key=lambda item: (-item[1], item[0].lower()))
+    ]
+    location_inner_urls = [
+        _safe("participants.list_participants", **participant_base_args, city_label=city)
+        for city in inner_city_order
     ]
     city_index = {city: idx for idx, city in enumerate(inner_city_order)}
     outer_segments = sorted(
@@ -320,18 +410,25 @@ def build_dashboard_context(
         "budget": {
             "labels": ["Engagé", "Disponible"],
             "values": [round(total_engage, 2), round(max(total_attribue - total_engage, 0.0), 2)],
+            "urls": [
+                _safe("main.stats", annee=budget_year, source="dashboard", focus="engage"),
+                _safe("main.stats", annee=budget_year, source="dashboard", focus="disponible"),
+            ],
         },
         "depenses": {
             "labels": month_labels,
             "values": [round(dep_by_month[k], 2) for k in month_labels],
+            "urls": dep_month_urls,
         },
         "sessions": {
             "labels": month_labels,
             "values": [sess_by_month[k] for k in month_labels],
+            "urls": sess_month_urls,
         },
         "public": {
             "labels": ["Habitants", "Salariés", "Bénévoles", "Administrateurs", "Partenaires", "Autres"],
             "values": [pub_counts["H"], pub_counts["S"], pub_counts["B"], pub_counts["A"], pub_counts["P"], pub_counts["?"]],
+            "urls": public_urls,
         },
         "gender": {
             "labels": ["Femmes", "Hommes", "Autre", "Non renseigné"],
@@ -342,12 +439,14 @@ def build_dashboard_context(
                 gender_counts["Non renseigné"],
             ],
             "money": False,
+            "urls": gender_urls,
         },
         "ages": {
-            "labels": [label for (label, _, _) in AGE_BUCKETS],
-            "values": [age_counts[label] for (label, _, _) in AGE_BUCKETS],
+            "labels": age_labels,
+            "values": age_values,
             "unknown": unknown_age_count,
             "money": False,
+            "urls": age_urls,
         },
         "locations": {
             "inner_labels": inner_city_order,
@@ -357,22 +456,39 @@ def build_dashboard_context(
             "outer_parents": [city_index.get(city, 0) for (city, _quartier), _count in outer_segments],
             "outer_city_labels": [city for (city, _quartier), _count in outer_segments],
             "money": False,
+            "inner_urls": location_inner_urls,
+            "outer_urls": [
+                _safe(
+                    "participants.list_participants",
+                    **participant_base_args,
+                    city_label=city,
+                    quartier_label=quartier,
+                )
+                for (city, quartier), _count in outer_segments
+            ],
         },
         "budget_donut": {
             "labels": ["Engagé", "Disponible"],
             "values": [round(total_engage, 2), round(max(total_attribue - total_engage, 0.0), 2)],
+            "urls": [
+                _safe("main.stats", annee=budget_year, source="dashboard", focus="engage"),
+                _safe("main.stats", annee=budget_year, source="dashboard", focus="disponible"),
+            ],
         },
         "depenses_bar": {
             "labels": month_labels,
             "values": [round(dep_by_month[k], 2) for k in month_labels],
+            "urls": dep_month_urls,
         },
         "sessions_line": {
             "labels": month_labels,
             "values": [sess_by_month[k] for k in month_labels],
+            "urls": sess_month_urls,
         },
         "public_pie": {
             "labels": ["Habitants", "Salariés", "Bénévoles", "Administrateurs", "Partenaires", "Autres"],
             "values": [pub_counts["H"], pub_counts["S"], pub_counts["B"], pub_counts["A"], pub_counts["P"], pub_counts["?"]],
+            "urls": public_urls,
         },
     }
 

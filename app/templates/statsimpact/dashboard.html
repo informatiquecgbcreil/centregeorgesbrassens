@@ -18,8 +18,40 @@
   .statsimpact-chart-grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap:14px; }
   .statsimpact-chart-box { position:relative; height:260px; min-height:260px; }
   .statsimpact-chart-box canvas { display:block; width:100% !important; height:100% !important; max-width:100%; }
+  .statsimpact-matrix-table--compact{ width:100%; table-layout:fixed; }
+  .statsimpact-matrix-table--compact th,
+  .statsimpact-matrix-table--compact td{
+    padding: 8px 6px;
+    font-size: 12px;
+    line-height: 1.2;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    vertical-align: middle;
+  }
+  .statsimpact-matrix-table--compact th{
+    font-size: 11px;
+  }
+  .statsimpact-matrix-table--compact th:first-child,
+  .statsimpact-matrix-table--compact td:first-child{
+    width: 23%;
+    text-align: left;
+  }
+  .statsimpact-matrix-table--compact th:not(:first-child),
+  .statsimpact-matrix-table--compact td:not(:first-child){
+    width: 7%;
+    text-align: center;
+  }
   @media (max-width: 768px) {
     .statsimpact-chart-box { height:220px; min-height:220px; }
+    .statsimpact-matrix-table--compact th,
+    .statsimpact-matrix-table--compact td{
+      padding: 7px 4px;
+      font-size: 11px;
+    }
+    .statsimpact-matrix-table--compact th{
+      font-size: 10px;
+    }
   }
 </style>
 
@@ -114,7 +146,7 @@
     {% for sect, rows in stats.base_by_secteur.items() %}
       <div class="monster-card">
         <h3 style="margin-top:0;">Secteur : {{ sect }}</h3>
-        <table class="statsimpact-matrix-table">
+        <table class="statsimpact-matrix-table statsimpact-matrix-table--compact">
           <thead>
             <tr>
               <th>Atelier</th>
@@ -134,7 +166,7 @@
           <tbody>
             {% for r in rows %}
               <tr>
-                <td><strong>{{ r.nom }}</strong></td>
+                <td title="{{ r.nom }}"><strong>{{ r.nom }}</strong></td>
                 <td>{{ r.sessions_planned }}</td>
                 <td>{{ r.sessions_real }}</td>
                 <td>{{ r.presences }}</td>

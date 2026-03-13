@@ -77,6 +77,10 @@
   </section>
 
   {% if mode != "admin_tech" %}
+    <div class="helper-banner" style="margin-bottom:12px;">
+      <strong>Détail rapide</strong>
+      <span class="muted">Clique sur une part, une barre ou un point pour ouvrir la page source avec les filtres correspondants.</span>
+    </div>
     <div class="grid" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap:12px;">
       <section class="section-card">
         <div class="section-head">
@@ -109,7 +113,7 @@
         <p class="muted" style="margin-top:0;">Comparaison entre le montant engagé et le disponible.</p>
         <div class="chart-shell"><canvas id="chartBudget" height="190"></canvas></div>
         <div class="chart-meta" data-chart-meta="chartBudget"></div>
-        <div class="chart-fallback-note muted">Survolez un segment ou utilisez la légende pour mettre une valeur en évidence.</div>
+        <div class="chart-fallback-note muted">Clique sur une part, une barre ou un point pour ouvrir le détail filtré.</div>
       </div>
       <div class="card chart-card">
         <div class="chart-card__head"><h2 style="margin-top:0;">Dépenses</h2></div>
@@ -388,7 +392,7 @@
         ctx.strokeStyle = 'rgba(255,255,255,.92)';
         ctx.stroke();
       }
-      hitboxes.push({ index:i, x:cx, y:cy, r0:inner, r1:r, start:angle, end:angle+slice, label:cfg.labels[i], value });
+      hitboxes.push({ index:i, x:cx, y:cy, r0:inner, r1:r, start:angle, end:angle+slice, label:cfg.labels[i], value, url:(cfg.urls || [])[i] || null });
       angle += slice;
     });
 
@@ -466,7 +470,7 @@
       ctx.font = '11px system-ui';
       ctx.textAlign = 'center';
       ctx.fillText((cfg.labels[i] || '').toString().slice(0, 8), x + barW / 2, height - 10);
-      hitboxes.push({ index:i, x, y, w:barW, h, label:cfg.labels[i], value:v });
+      hitboxes.push({ index:i, x, y, w:barW, h, label:cfg.labels[i], value:v, url:(cfg.urls || [])[i] || null });
     });
 
     chartStates.set(id, { ...state, type:'bar', hitboxes, redraw:() => makeBar(id, cfg), money });
@@ -539,7 +543,7 @@
       }
     });
 
-    chartStates.set(id, { ...state, type:'line', hitboxes:pts.map(p => ({ ...p, w: 12, h: 12, value: p.v })), redraw:() => makeLine(id, cfg), money:false });
+    chartStates.set(id, { ...state, type:'line', hitboxes:pts.map((p, i) => ({ ...p, w: 12, h: 12, value: p.v, url:(cfg.urls || [])[i] || null })), redraw:() => makeLine(id, cfg), money:false });
     const values = cfg.values.map((v, i) => ({ label: cfg.labels[i], value: v })).sort((a, b) => Number(b.value) - Number(a.value)).slice(0, 3);
     setMeta(canvas, values, false);
   }
@@ -584,7 +588,7 @@
       ctx.textAlign = 'left';
       ctx.fillText(formatValue(v, false), pad.left + w + 8, y + barH * 0.68);
 
-      hitboxes.push({ index:i, x:pad.left, y, w, h:barH, label:cfg.labels[i], value:v });
+      hitboxes.push({ index:i, x:pad.left, y, w, h:barH, label:cfg.labels[i], value:v, url:(cfg.urls || [])[i] || null });
     });
 
     chartStates.set(id, { ...state, type:'hbar', hitboxes, redraw:() => makeHorizontalBars(id, cfg), money });
@@ -600,7 +604,9 @@
       { show: cfg.showLegend !== false }
     );
     const values = cfg.values.map((v, i) => ({ label: cfg.labels[i], value: v }));
-    if (Number(cfg.unknown || 0) > 0) values.push({ label: 'Âge non renseigné', value: cfg.unknown });
+    if (Number(cfg.unknown || 0) > 0 && !(cfg.labels || []).includes('Âge non renseigné')) {
+      values.push({ label: 'Âge non renseigné', value: cfg.unknown });
+    }
     setMeta(canvas, values, false);
   }
 
@@ -639,7 +645,7 @@
         ctx.strokeStyle = 'rgba(255,255,255,.92)';
         ctx.stroke();
       }
-      hitboxes.push({ index:`inner-${i}`, parentIndex:i, x:cx, y:cy, r0:innerHole, r1:midR - 6, start:innerAngle, end:innerAngle + slice, label:cfg.inner_labels[i], value, layer:'inner' });
+      hitboxes.push({ index:`inner-${i}`, parentIndex:i, x:cx, y:cy, r0:innerHole, r1:midR - 6, start:innerAngle, end:innerAngle + slice, label:cfg.inner_labels[i], value, layer:'inner', url:(cfg.inner_urls || [])[i] || null });
       innerAngle += slice;
     });
 
@@ -663,7 +669,7 @@
         ctx.stroke();
       }
       const fullLabel = `${cfg.outer_city_labels[i]} · ${cfg.outer_labels[i]}`;
-      hitboxes.push({ index:`outer-${i}`, parentIndex, x:cx, y:cy, r0:midR + 6, r1:outerR, start:outerAngle, end:outerAngle + slice, label:fullLabel, value, layer:'outer' });
+      hitboxes.push({ index:`outer-${i}`, parentIndex, x:cx, y:cy, r0:midR + 6, r1:outerR, start:outerAngle, end:outerAngle + slice, label:fullLabel, value, layer:'outer', url:(cfg.outer_urls || [])[i] || null });
       outerAngle += slice;
     });
 
@@ -711,6 +717,12 @@
     if (state && typeof state.redraw === 'function') state.redraw();
   }
 
+  function openHitTarget(hit) {
+    if (!hit || !hit.url || hit.url === '#') return false;
+    window.location.assign(hit.url);
+    return true;
+  }
+
   function registerPointer(id) {
     const canvas = document.getElementById(id);
     if (!canvas || canvas.dataset.pointerWired === '1') return;
@@ -726,6 +738,7 @@
         hit = state.hitboxes.find(h => x >= (h.x - 6) && x <= (h.x + (h.w || 12) + 6) && y >= (h.y || 0) && y <= ((h.y || 0) + (h.h || canvas.clientHeight)));
       }
       const hovered = hit ? hit.index : null;
+      canvas.style.cursor = hit && hit.url ? 'pointer' : 'default';
       if (state.hovered !== hovered) {
         state.hovered = hovered;
         chartStates.set(id, state);
@@ -735,9 +748,23 @@
     canvas.addEventListener('mouseleave', () => {
       const state = chartStates.get(id);
       if (!state) return;
+      canvas.style.cursor = 'default';
       state.hovered = null;
       chartStates.set(id, state);
       redraw(id);
+    });
+    canvas.addEventListener('click', (e) => {
+      const state = chartStates.get(id);
+      if (!state) return;
+      const rect = canvas.getBoundingClientRect();
+      const x = e.clientX - rect.left, y = e.clientY - rect.top;
+      let hit = null;
+      if (state.type === 'doughnut' || state.type === 'nested-doughnut') {
+        hit = state.hitboxes.find(h => hitArc(h.x, h.y, h.r0, h.r1, h.start, h.end, x, y));
+      } else {
+        hit = state.hitboxes.find(h => x >= (h.x - 6) && x <= (h.x + (h.w || 12) + 6) && y >= (h.y || 0) && y <= ((h.y || 0) + (h.h || canvas.clientHeight)));
+      }
+      openHitTarget(hit);
     });
   }
 

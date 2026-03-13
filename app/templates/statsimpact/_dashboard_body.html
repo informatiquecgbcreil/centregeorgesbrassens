@@ -51,6 +51,33 @@
     overflow-wrap: break-word;
     word-break: normal;
   }
+  .mini-table--compact {
+    width: 100%;
+    table-layout: fixed;
+  }
+  .mini-table--compact th,
+  .mini-table--compact td {
+    padding: 8px 6px;
+    font-size: 12px;
+    line-height: 1.2;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    vertical-align: middle;
+  }
+  .mini-table--compact th {
+    font-size: 11px;
+  }
+  .mini-table--compact th:first-child,
+  .mini-table--compact td:first-child {
+    width: 23%;
+    text-align: left;
+  }
+  .mini-table--compact th:not(:first-child),
+  .mini-table--compact td:not(:first-child) {
+    width: 7%;
+    text-align: center;
+  }
   .tab-nav { display:flex; gap:8px; margin:12px 0 16px 0; flex-wrap:wrap; }
   .tab-btn { padding:10px 14px; border:1px solid #dfe3f0; background:#f7f9fc; border-radius:10px; cursor:pointer; font-weight:600; }
   .tab-btn.active { background:#0f62fe; color:#fff; border-color:#0f62fe; box-shadow:0 6px 12px rgba(15,98,254,0.2); }
@@ -152,7 +179,7 @@
     {% for sect, rows in stats.base_by_secteur.items() %}
       <div class="card" style="margin-bottom:14px; padding:12px; border:1px solid #e5e5e5; box-shadow:0 6px 16px rgba(0,0,0,0.04);">
         <h3 style="margin-top:0;">Secteur : {{ sect }}</h3>
-        <table class="mini-table">
+        <table class="mini-table mini-table--compact">
           <thead>
             <tr>
               <th>Atelier</th>
@@ -172,7 +199,7 @@
           <tbody>
             {% for r in rows %}
               <tr>
-                <td><strong>{{ r.nom }}</strong></td>
+                <td title="{{ r.nom }}"><strong>{{ r.nom }}</strong></td>
                 <td>{{ r.sessions_planned }}</td>
                 <td>{{ r.sessions_real }}</td>
                 <td>{{ r.presences }}</td>
