@@ -36,13 +36,14 @@
             <td>{{ u.secteur_assigne or "" }}</td>
             <td>
               <form method="post" action="{{ url_for('admin.set_user_roles') }}" class="filters-grid">
+                <input type="hidden" name="user_id" value="{{ u.id }}">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <div class="field-stack">
                   <label>Rôle</label>
                   <select class="input" name="role">
                     <option value="">Conserver le rôle actuel</option>
                     {% for r in roles %}
-                      <option value="{{ r.name }}">{{ r.name }}</option>
+                      <option value="{{ r.code }}">{{ r.code }}</option>
                     {% endfor %}
                   </select>
                 </div>

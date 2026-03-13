@@ -23,10 +23,10 @@
     <tbody>
     {% for r in roles %}
       <tr>
-        <td><b>{{ r.name }}</b></td>
+        <td><b>{{ r.code }}</b></td>
         <td>{{ r.label or "" }}</td>
         <td>
-          {% if r.is_system %}<span class="badge">Système</span>{% else %}<span class="badge">Custom</span>{% endif %}
+          {% if r.code in ["admin_tech", "direction", "directrice", "finance", "responsable_secteur"] %}<span class="badge">Système</span>{% else %}<span class="badge">Custom</span>{% endif %}
         </td>
         <td style="max-width:520px;">
           <div style="display:flex; flex-wrap:wrap; gap:6px;">
@@ -40,7 +40,7 @@
         </td>
         <td>
           <a class="btn" href="{{ url_for('admin.droits') }}">Éditer</a>
-          {% if not r.is_system %}
+          {% if r.code not in ["admin_tech", "direction", "directrice", "finance", "responsable_secteur"] %}
           <form method="post" action="{{ url_for('admin.delete_role') }}" style="display:inline;">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <input type="hidden" name="role_code" value="{{ r.code if r.code is defined else r.name }}">
