@@ -31,6 +31,16 @@ def _get_single_role_code_from_form() -> str | None:
     return None
 
 
+def _parse_form_int(name: str) -> int | None:
+    raw = (request.form.get(name) or "").strip()
+    if not raw:
+        return None
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        return None
+
+
 @bp.route("/users", methods=["GET", "POST"])
 @login_required
 @require_perm("admin:users")
@@ -114,7 +124,10 @@ def droits():
 
         # --- Affecter un rôle (unique) à un user ---
         if action == "set_user_roles":
-            user_id = int(request.form.get("user_id") or 0)
+            user_id = _parse_form_int("user_id")
+            if user_id is None:
+                flash("Identifiant utilisateur invalide.", "danger")
+                return redirect(url_for("admin.droits"))
             u = User.query.get_or_404(user_id)
 
             role_code = _get_single_role_code_from_form()
@@ -165,10 +178,14 @@ def droits():
 @require_perm("admin:users")
 @require_perm("admin:rbac")
 def set_user_roles():
-    user_id = int(request.form.get("user_id") or 0)
+    user_id = _parse_form_int("user_id")
+    if user_id is None:
+        flash("Identifiant utilisateur invalide.", "danger")
+        return redirect(url_for("admin.droits"))
     u = User.query.get_or_404(user_id)
 
     role_code = _get_single_role_code_from_form()
+    secteur_assigne = (request.form.get("secteur_assigne") or "").strip() or None
 
     # Force: 1 seul rôle RBAC
     u.roles = []
@@ -177,6 +194,8 @@ def set_user_roles():
         if r:
             u.roles.append(r)
             # legacy sync
+
+    u.secteur_assigne = secteur_assigne
 
     db.session.commit()
     flash("Les rôles de l’utilisateur ont bien été mis à jour.", "success")
@@ -237,6 +256,10 @@ def delete_role():
     r = Role.query.filter_by(code=role_code).first()
     if not r:
         flash("Le rôle demandé est introuvable.", "warning")
+        return redirect(url_for("admin.droits"))
+
+    if r.code in {"admin_tech", "direction", "directrice", "finance", "responsable_secteur"}:
+        flash("Ce rôle système ne peut pas être supprimé.", "warning")
         return redirect(url_for("admin.droits"))
 
     # Détache users + perms (évite erreurs tables d'association)
