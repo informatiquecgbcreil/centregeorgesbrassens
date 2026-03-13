@@ -28,7 +28,7 @@
         <div class="inline" style="gap:8px; flex-wrap:wrap;">
           <a class="btn" href="{{ url_for('bilans.bilan_subvention', year=year, id=data.subvention.id) }}">← Retour</a>
           <button class="btn" onclick="window.print()">🖨️ Imprimer</button>
-          <a class="btn" href="{{ url_for('bilans.subvention_export_csv', year=year, id=data.subvention.id) }}">⬇️ CSV</a>
+          <a class="btn" href="{{ url_for('bilans.bilan_subvention', year=year, id=data.subvention.id) }}">↩️ Retour détail</a>
         </div>
       </div>
     </div>
